@@ -1,54 +1,151 @@
-export ZSH="$HOME/.oh-my-zsh"
-export PATH="/opt/homebrew/bin:$PATH"
-export NVM_DIR="$HOME/.nvm"
-# Added by Antigravity
-export PATH="/Users/nam.nguyenv/.antigravity/antigravity/bin:$PATH"
-[ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && \. "/opt/homebrew/opt/nvm/nvm.sh"                                       # This loads nvm
-[ -s "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" ] && \. "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" # This loads nvm bash_completion
+# =============================================================================
+# SYSTEM & PATH CONFIGURATION
+# =============================================================================
 
-alias code="open -a \"/Users/nam.nguyenv/Apps/VisualStudioCode.app\" ."
-alias shell='open ~/.zshrc'
+# -- Environment Variables --
+export ZSH="$HOME/.oh-my-zsh"
+export NVM_DIR="$HOME/.nvm"
+export EDITOR="nvim"
+export WARP_USE_SSH_WRAPPER=1 # Force Warp to use custom prompt
+
+# -- PATH --
+export PATH="/opt/homebrew/bin:$PATH"
+export PATH="/Users/nam.nguyenv/.antigravity/antigravity/bin:$PATH" # Added by Antigravity
+export PATH="/Users/nam.nguyenv/Library/Python/3.11/bin:$PATH"
+### MANAGED BY RANCHER DESKTOP START (DO NOT EDIT)
+export PATH="/Users/nam.nguyenv/.rd/bin:$PATH"
+### MANAGED BY RANCHER DESKTOP END (DO NOT EDIT)
+
+# =============================================================================
+# ZSH CONFIGURATION
+# =============================================================================
 
 ZSH_THEME=""
-
 plugins=(git)
 
 source $ZSH/oh-my-zsh.sh
 
+# -- Prompts & Tools --
 if [[ "$TERM_PROGRAM" != "WarpTerminal" ]]; then
 	eval "$(starship init zsh)"
 fi
 
-# Force Warp to use custom prompt
-export WARP_USE_SSH_WRAPPER=1
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+eval "$(zoxide init zsh)"
 
-export NVM_DIR="$HOME/.nvm"
-source ~/.nvm/nvm.sh
+# =============================================================================
+# TOOL INITIALIZATION
+# =============================================================================
+
+# -- NVM --
+[ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && \. "/opt/homebrew/opt/nvm/nvm.sh"                                       # This loads nvm
+[ -s "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" ] && \. "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" # This loads nvm bash_completion
+# Backup NVM loading (from original file, kept for safety)
+[ -s "$HOME/.nvm/nvm.sh" ] && source "$HOME/.nvm/nvm.sh"
+
+# -- Google Cloud SDK --
+if [ -f '/Users/nam.nguyenv/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/nam.nguyenv/google-cloud-sdk/path.zsh.inc'; fi
+if [ -f '/Users/nam.nguyenv/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/nam.nguyenv/google-cloud-sdk/completion.zsh.inc'; fi
+
+# -- Tabtab (Electron Forge) --
+# uninstall by removing these lines or running `tabtab uninstall electron-forge`
+[[ -f /Users/nam.nguyenv/Development/Projects/electron-quick-start/node_modules/tabtab/.completions/electron-forge.zsh ]] && . /Users/nam.nguyenv/Development/Projects/electron-quick-start/node_modules/tabtab/.completions/electron-forge.zsh
+
+# =============================================================================
+# ALIASES
+# =============================================================================
+
+# -- Editors --
+alias code="open -a \"/Users/nam.nguyenv/Apps/VisualStudioCode.app\" ."
+alias shell='open ~/.zshrc'
+alias vim="nvim"
+
+# -- Git --
 alias pul="git pull"
-alias dev="npm run dev"
 alias grs1="git reset --soft HEAD~1"
 alias grl="git reflog"
 alias gbd="git branch -D"
-alias lint="npm run lint"
 alias grss="git reset --soft"
-alias build="npm run build"
 alias gsts="git stash push"
 alias gsta="git stash apply"
 alias gstsn="git stash save -m $1"
-function gstan() { git stash apply stash@{"$1"}; }
+
+# -- Node / NPM --
+alias dev="npm run dev"
+alias lint="npm run lint"
+alias build="npm run build"
 alias test="npm run test:one-click-booking"
 alias start="npm run start"
+
+# =============================================================================
+# FUNCTIONS
+# =============================================================================
+
+# --------------------------
+# Git Utilities
+# --------------------------
+
+function gstan() { git stash apply stash@{"$1"}; }
+
 function grsho() { git reset --hard origin/"$1"; }
+
 function grbf() {
 	git checkout "$1"
 	git reset --hard origin/"$1"
 	git checkout -
 	git rebase "$1"
 }
-function rune2e() {
-	PWDEBUG=1 npm run test --tags=@"$1" --testbrowser="$2"
-}
+
 function gbdo() { git push origin --delete "$1"; }
+
+function gpup() {
+	local remote="${1:-origin}"
+	local current_branch=$(git rev-parse --abbrev-ref HEAD)
+	echo "Pushing and setting upstream for branch: $current_branch to remote: $remote"
+	git push --set-upstream "$remote" "$current_branch"
+}
+
+# --------------------------
+# Git Profile Check
+# --------------------------
+
+function sshCheck() {
+    # 1. Get the remote URL
+    local remote_url=$(git remote get-url origin 2>/dev/null)
+    if [ -z "$remote_url" ]; then
+        echo "❌ Not a git repository or no remote 'origin' found."
+        return 1
+    fi
+    echo "📦 Remote: $remote_url"
+
+    # 2. Extract the hostname
+    # Handles: git@github.com:user/repo, ssh://git@github.com/..., https://github.com/...
+    local host=""
+    if [[ "$remote_url" =~ "^http" ]]; then
+        echo "⚠️  Using HTTPS, not SSH. Credential helper is used instead of SSH keys."
+        host=$(echo "$remote_url" | awk -F/ '{print $3}')
+    else
+        # Extract host from SCP-like syntax (user@host:path) or SSH syntax (ssh://user@host/path)
+        host=$(echo "$remote_url" | sed -E 's/.*@//' | sed -E 's/:.*//' | sed -E 's/\/.*//')
+    fi
+
+    # 3. Check Git Config signature
+    echo "👤 Git Config: $(git config user.name) <$(git config user.email)>"
+
+    # 4. Test SSH Connection
+    if [[ "$remote_url" =~ "^http" ]]; then
+        return 0
+    fi
+
+    echo "🔑 Testing SSH connection to '$host'..."
+    # ssh -vT will show the exact key file being offered
+    # We grep for "Offering public key" or the final identity message
+    ssh -vT "git@$host" 2>&1 | grep -E "Offering public key|Authenticated to|Hi" | head -n 5
+}
+
+# --------------------------
+# GitHub / PR Utilities
+# --------------------------
 
 function pr() {
 	if [ "$#" -gt 3 ]; then
@@ -94,38 +191,6 @@ function pr() {
 	echo "✓ PR link copied to clipboard!"
 }
 
-function deploy() {
-	local ref="$1"
-	local env="$2"
-	gh workflow run deploy-test.yml --ref "$ref" --field env="$env"
-}
-export PATH="/Users/nam.nguyenv/Library/Python/3.11/bin:$PATH"
-
-if [ -f '/Users/nam.nguyenv/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/nam.nguyenv/google-cloud-sdk/path.zsh.inc'; fi
-
-if [ -f '/Users/nam.nguyenv/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/nam.nguyenv/google-cloud-sdk/completion.zsh.inc'; fi
-
-# tabtab source for electron-forge package
-# uninstall by removing these lines or running `tabtab uninstall electron-forge`
-[[ -f /Users/nam.nguyenv/Development/Projects/electron-quick-start/node_modules/tabtab/.completions/electron-forge.zsh ]] && . /Users/nam.nguyenv/Development/Projects/electron-quick-start/node_modules/tabtab/.completions/electron-forge.zsh
-### MANAGED BY RANCHER DESKTOP START (DO NOT EDIT)
-export PATH="/Users/nam.nguyenv/.rd/bin:$PATH"
-### MANAGED BY RANCHER DESKTOP END (DO NOT EDIT)
-
-function cursor() {
-	open -n ~/Downloads/Apps/Cursor.app --args $PWD
-}
-
-function webstorm() {
-	open -a "$HOME/Apps/WebStorm.app" "${1:-.}"
-}
-
-gpup() {
-	local current_branch=$(git rev-parse --abbrev-ref HEAD)
-	echo "Pushing and setting upstream for branch: $current_branch"
-	git push --set-upstream origin $current_branch
-}
-
 approve_prs_by_author() {
 	# Check if username argument is provided
 	if [[ -z "$1" ]]; then
@@ -150,8 +215,6 @@ approve_prs_by_author() {
 	echo "Searching for open PRs authored by '$author_username' requesting a review from '$current_user'..."
 
 	# Search for PRs using gh search and format output as JSON
-	# We only need the URL for reviewing
-	# ** CORRECTED FLAG IS USED BELOW **
 	local pr_list_json
 	pr_list_json=$(gh search prs --author="$author_username" --review-requested=@me --state=open --limit=100 --json url 2>&1)
 
@@ -191,12 +254,9 @@ approve_prs_by_author() {
 	echo "$pr_list_json" | jq -r '.[] | .url' | while read -r pr_url; do
 		if [[ -n "$pr_url" ]]; then
 			echo "Approving PR: $pr_url"
-			# Approve the PR using its URL
-			# Added a generic comment body, modify if needed
 			gh pr review "$pr_url" --approve
 			if [[ $? -ne 0 ]]; then
 				echo "Error approving PR: $pr_url. Continuing..."
-				# Optional: Add more robust error handling here
 			fi
 		fi
 	done
@@ -282,52 +342,52 @@ query {
   
   # Output formatted PR info
   "\n\n ==================================== \n \u001b[1m#\($pr.node.number): \($pr.node.title)\u001b[0m
-
-📁 \u001b[1mRepo:\u001b[0m \($pr.node.repository.nameWithOwner)
-
-🌿 \u001b[1mBranch:\u001b[0m \($pr.node.headRefName) → \($pr.node.baseRefName)
-
-🔗 \u001b[1mURL:\u001b[0m \($pr.node.url)
-
-👍 \u001b[1mApprovals:\u001b[0m \([($pr.node.reviews.nodes // [])[] | select(.state == "APPROVED")] | length)/\($pr.node.reviews.totalCount // 0)
-
-💬 \u001b[1mComments:\u001b[0m \u001b[" + (if $unresolvedThreads > 0 then "31" else "32" end) + "m\($unresolvedThreads) unresolved\u001b[0m / \($totalThreads) total
-
-🔄 \u001b[1mCI Status:\u001b[0m " + (
-  if ($pr.node.commits.nodes[0].commit.statusCheckRollup // null) == null then
-    "No CI checks"
-  else
-    "✅ \($success) / ❌ \($failure) / ⏳ \($pending) (Total: \($total))"
-  end
-) + "
-📊 \u001b[1mMerge Status:\u001b[0m " + (
-  if $pr.node.mergeStateStatus == "CLEAN" then
-    "\u001b[32m✓ Ready to merge\u001b[0m"
-  elif $pr.node.mergeStateStatus == "BEHIND" then
-    "\u001b[33m⟲ Needs update from base branch\u001b[0m"
-  elif $pr.node.mergeStateStatus == "BLOCKED" then
-    "\u001b[31m🚫 Blocked from merging\u001b[0m"
-  elif $pr.node.mergeStateStatus == "DIRTY" then
-    "\u001b[31m⚠️ Has conflicts\u001b[0m"
-  elif $pr.node.mergeStateStatus == "DRAFT" then
-    "\u001b[36m📝 Draft PR, not ready\u001b[0m"
-  elif $pr.node.mergeStateStatus == "HAS_HOOKS" then
-    "\u001b[33m⏱️ Waiting for hooks\u001b[0m"
-  elif $pr.node.mergeStateStatus == "UNKNOWN" then
-    "\u001b[90m❓ Status unknown\u001b[0m"
-  elif $pr.node.mergeStateStatus == "UNSTABLE" then
-    "\u001b[31m❗ Checks failing\u001b[0m"
-  else
-    $pr.node.mergeStateStatus
-  end
-) + "
-⚡ \u001b[1mCommands:\u001b[0m
-  \u001b[36m gh pr update-branch \($pr.node.number) --repo \($pr.node.repository.nameWithOwner)\u001b[0m
-  \u001b[36m gh pr update-branch \($pr.node.number) --repo \($pr.node.repository.nameWithOwner) --rebase\u001b[0m
-  \u001b[36m gh pr merge \($pr.node.number) --repo \($pr.node.repository.nameWithOwner) --squash --delete-branch --auto\u001b[0m
-  \u001b[36m gh pr close \($pr.node.number) --repo \($pr.node.repository.nameWithOwner)\u001b[0m
-  \u001b[36m gh pr comment \($pr.node.number) --repo \($pr.node.repository.nameWithOwner) --body \"Your comment here\"\u001b[0m
-\n--------------------------------------------------\n\n\n"
+  
+  📁 \u001b[1mRepo:\u001b[0m \($pr.node.repository.nameWithOwner)
+  
+  🌿 \u001b[1mBranch:\u001b[0m \($pr.node.headRefName) → \($pr.node.baseRefName)
+  
+  🔗 \u001b[1mURL:\u001b[0m \($pr.node.url)
+  
+  👍 \u001b[1mApprovals:\u001b[0m \([($pr.node.reviews.nodes // [])[] | select(.state == "APPROVED")] | length)/\($pr.node.reviews.totalCount // 0)
+  
+  💬 \u001b[1mComments:\u001b[0m \u001b[" + (if $unresolvedThreads > 0 then "31" else "32" end) + "m\($unresolvedThreads) unresolved\u001b[0m / \($totalThreads) total
+  
+  🔄 \u001b[1mCI Status:\u001b[0m " + (
+    if ($pr.node.commits.nodes[0].commit.statusCheckRollup // null) == null then
+      "No CI checks"
+    else
+      "✅ \($success) / ❌ \($failure) / ⏳ \($pending) (Total: \($total))"
+    end
+  ) + "
+  📊 \u001b[1mMerge Status:\u001b[0m " + (
+    if $pr.node.mergeStateStatus == "CLEAN" then
+      "\u001b[32m✓ Ready to merge\u001b[0m"
+    elif $pr.node.mergeStateStatus == "BEHIND" then
+      "\u001b[33m⟲ Needs update from base branch\u001b[0m"
+    elif $pr.node.mergeStateStatus == "BLOCKED" then
+      "\u001b[31m🚫 Blocked from merging\u001b[0m"
+    elif $pr.node.mergeStateStatus == "DIRTY" then
+      "\u001b[31m⚠️ Has conflicts\u001b[0m"
+    elif $pr.node.mergeStateStatus == "DRAFT" then
+      "\u001b[36m📝 Draft PR, not ready\u001b[0m"
+    elif $pr.node.mergeStateStatus == "HAS_HOOKS" then
+      "\u001b[33m⏱️ Waiting for hooks\u001b[0m"
+    elif $pr.node.mergeStateStatus == "UNKNOWN" then
+      "\u001b[90m❓ Status unknown\u001b[0m"
+    elif $pr.node.mergeStateStatus == "UNSTABLE" then
+      "\u001b[31m❗ Checks failing\u001b[0m"
+    else
+      $pr.node.mergeStateStatus
+    end
+  ) + "
+  ⚡ \u001b[1mCommands:\u001b[0m
+    \u001b[36m gh pr update-branch \($pr.node.number) --repo \($pr.node.repository.nameWithOwner)\u001b[0m
+    \u001b[36m gh pr update-branch \($pr.node.number) --repo \($pr.node.repository.nameWithOwner) --rebase\u001b[0m
+    \u001b[36m gh pr merge \($pr.node.number) --repo \($pr.node.repository.nameWithOwner) --squash --delete-branch --auto\u001b[0m
+    \u001b[36m gh pr close \($pr.node.number) --repo \($pr.node.repository.nameWithOwner)\u001b[0m
+    \u001b[36m gh pr comment \($pr.node.number) --repo \($pr.node.repository.nameWithOwner) --body \"Your comment here\"\u001b[0m
+  \n--------------------------------------------------\n\n\n"
 )'
 }
 
@@ -410,53 +470,53 @@ query {
   
   # Output formatted PR info
   "\n\n \u001b[1m#\($pr.node.number): \($pr.node.title)\u001b[0m
-
-👤 \u001b[1mAuthor:\u001b[0m \($pr.node.author.login)
-
-📁 \u001b[1mRepo:\u001b[0m \($pr.node.repository.nameWithOwner)
-
-🌿 \u001b[1mBranch:\u001b[0m \($pr.node.headRefName) → \($pr.node.baseRefName)
-
-🔗 \u001b[1mURL:\u001b[0m \($pr.node.url)
-
-👍 \u001b[1mApprovals:\u001b[0m \([($pr.node.reviews.nodes // [])[] | select(.state == "APPROVED")] | length)/\($pr.node.reviews.totalCount // 0)
-
-💬 \u001b[1mComments:\u001b[0m \u001b[" + (if $unresolvedThreads > 0 then "31" else "32" end) + "m\($unresolvedThreads) unresolved\u001b[0m / \($totalThreads) total
-
-🔄 \u001b[1mCI Status:\u001b[0m " + (
-  if ($pr.node.commits.nodes[0].commit.statusCheckRollup // null) == null then
-    "No CI checks"
-  else
-    "✅ \($success) / ❌ \($failure) / ⏳ \($pending) (Total: \($total))"
-  end
-) + "
-📊 \u001b[1mMerge Status:\u001b[0m " + (
-  if $pr.node.mergeStateStatus == "CLEAN" then
-    "\u001b[32m✓ Ready to merge\u001b[0m"
-  elif $pr.node.mergeStateStatus == "BEHIND" then
-    "\u001b[33m⟲ Needs update from base branch\u001b[0m"
-  elif $pr.node.mergeStateStatus == "BLOCKED" then
-    "\u001b[31m🚫 Blocked from merging\u001b[0m"
-  elif $pr.node.mergeStateStatus == "DIRTY" then
-    "\u001b[31m⚠️ Has conflicts\u001b[0m"
-  elif $pr.node.mergeStateStatus == "DRAFT" then
-    "\u001b[36m📝 Draft PR, not ready\u001b[0m"
-  elif $pr.node.mergeStateStatus == "HAS_HOOKS" then
-    "\u001b[33m⏱️ Waiting for hooks\u001b[0m"
-  elif $pr.node.mergeStateStatus == "UNKNOWN" then
-    "\u001b[90m❓ Status unknown\u001b[0m"
-  elif $pr.node.mergeStateStatus == "UNSTABLE" then
-    "\u001b[31m❗ Checks failing\u001b[0m"
-  else
-    $pr.node.mergeStateStatus
-  end
-) + "
-⚡ \u001b[1mRemote Commands:\u001b[0m
-  \u001b[36m gh pr review \($pr.node.number) --approve --repo \($pr.node.repository.nameWithOwner)\u001b[0m
-  \u001b[36m gh pr review \($pr.node.number) --comment --repo \($pr.node.repository.nameWithOwner)\u001b[0m
-  \u001b[36m gh pr review \($pr.node.number) --request-changes --repo \($pr.node.repository.nameWithOwner)\u001b[0m
-  \u001b[36m gh pr merge \($pr.node.number) --repo \($pr.node.repository.nameWithOwner) --squash --delete-branch --auto\u001b[0m
-\n--------------------------------------------------\n\n\n"
+  
+  👤 \u001b[1mAuthor:\u001b[0m \($pr.node.author.login)
+  
+  📁 \u001b[1mRepo:\u001b[0m \($pr.node.repository.nameWithOwner)
+  
+  🌿 \u001b[1mBranch:\u001b[0m \($pr.node.headRefName) → \($pr.node.baseRefName)
+  
+  🔗 \u001b[1mURL:\u001b[0m \($pr.node.url)
+  
+  👍 \u001b[1mApprovals:\u001b[0m \([($pr.node.reviews.nodes // [])[] | select(.state == "APPROVED")] | length)/\($pr.node.reviews.totalCount // 0)
+  
+  💬 \u001b[1mComments:\u001b[0m \u001b[" + (if $unresolvedThreads > 0 then "31" else "32" end) + "m\($unresolvedThreads) unresolved\u001b[0m / \($totalThreads) total
+  
+  🔄 \u001b[1mCI Status:\u001b[0m " + (
+    if ($pr.node.commits.nodes[0].commit.statusCheckRollup // null) == null then
+      "No CI checks"
+    else
+      "✅ \($success) / ❌ \($failure) / ⏳ \($pending) (Total: \($total))"
+    end
+  ) + "
+  📊 \u001b[1mMerge Status:\u001b[0m " + (
+    if $pr.node.mergeStateStatus == "CLEAN" then
+      "\u001b[32m✓ Ready to merge\u001b[0m"
+    elif $pr.node.mergeStateStatus == "BEHIND" then
+      "\u001b[33m⟲ Needs update from base branch\u001b[0m"
+    elif $pr.node.mergeStateStatus == "BLOCKED" then
+      "\u001b[31m🚫 Blocked from merging\u001b[0m"
+    elif $pr.node.mergeStateStatus == "DIRTY" then
+      "\u001b[31m⚠️ Has conflicts\u001b[0m"
+    elif $pr.node.mergeStateStatus == "DRAFT" then
+      "\u001b[36m📝 Draft PR, not ready\u001b[0m"
+    elif $pr.node.mergeStateStatus == "HAS_HOOKS" then
+      "\u001b[33m⏱️ Waiting for hooks\u001b[0m"
+    elif $pr.node.mergeStateStatus == "UNKNOWN" then
+      "\u001b[90m❓ Status unknown\u001b[0m"
+    elif $pr.node.mergeStateStatus == "UNSTABLE" then
+      "\u001b[31m❗ Checks failing\u001b[0m"
+    else
+      $pr.node.mergeStateStatus
+    end
+  ) + "
+  ⚡ \u001b[1mRemote Commands:\u001b[0m
+    \u001b[36m gh pr review \($pr.node.number) --approve --repo \($pr.node.repository.nameWithOwner)\u001b[0m
+    \u001b[36m gh pr review \($pr.node.number) --comment --repo \($pr.node.repository.nameWithOwner)\u001b[0m
+    \u001b[36m gh pr review \($pr.node.number) --request-changes --repo \($pr.node.repository.nameWithOwner)\u001b[0m
+    \u001b[36m gh pr merge \($pr.node.number) --repo \($pr.node.repository.nameWithOwner) --squash --delete-branch --auto\u001b[0m
+  \n--------------------------------------------------\n\n\n"
 )'
 }
 
@@ -745,57 +805,6 @@ function goto_pr() {
 		echo "$GITHUB_URL"
 	fi
 }
-alias cursor="open -a ~/Apps/Cursor.app ."
-
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
-
-eval "$(zoxide init zsh)"
-
-function zgco() {
-	local recent_branches
-	recent_branches=$(git reflog --date=local --all 2>/dev/null | grep checkout | grep -o "checkout: moving from .* to .*" | sed 's/checkout: moving from //g' | awk '{print $NF}' | awk '!seen[$0]++' | head -n 15)
-
-	local all_branches
-	all_branches=$(git branch -a | sed 's/^[ *]*//' | sed 's/remotes\/origin\///')
-
-	local sorted_branches
-	sorted_branches=$(echo "$recent_branches\n$all_branches" | awk '!seen[$0]++')
-
-	local selected_branch
-	selected_branch=$(echo "$sorted_branches" | fzf --prompt="Select branch: " --height=40%)
-
-	if [ -n "$selected_branch" ]; then
-		git checkout "$selected_branch"
-	fi
-}
-
-function zf() {
-	local selected
-	selected=$(find . -maxdepth 3 -not -path '*/node_modules/*' 2>/dev/null | fzf --preview 'if [ -d {} ]; then ls -la {}; else bat --color=always --style=numbers --line-range=:100 {} 2>/dev/null || cat {} 2>/dev/null || echo "Binary file or no preview available"; fi')
-
-	if [ -n "$selected" ]; then
-		if [ -d "$selected" ]; then
-			cd "$selected"
-		else
-			open "$selected"
-		fi
-	fi
-}
-
-function zfunc() {
-	local func_list
-	func_list=$(grep -E '^(function [a-zA-Z_][a-zA-Z0-9_]*\(\)|function [a-zA-Z_][a-zA-Z0-9_]* \{|[a-zA-Z_][a-zA-Z0-9_]*\(\))' ~/.zshrc | sed -E 's/^function ([a-zA-Z_][a-zA-Z0-9_]*).*$/\1/; s/^([a-zA-Z_][a-zA-Z0-9_]*)\(\).*$/\1/' | sort -u | fzf --preview 'awk "/^function {}[({]/ {p=1} p {print} /^}}/ && p {exit}" ~/.zshrc | bat --color=always --language=bash --style=numbers' --preview-window=right:60%:wrap --height=80%)
-
-	if [ -n "$func_list" ]; then
-		print -z "$func_list "
-	fi
-}
-
-function odsAuthConnect() {
-	~/alloydb-auth-proxy projects/one-global-ods-uat/locations/asia-southeast1/clusters/sea1-uat-ods-db-cluster/instances/ods-ecomapi --port 9999 --auto-iam-authn --public-ip
-}
-
-function dockerDaemonStart() { colima start; }
 
 function workflowRun() {
 	if [ ! -d ".github/workflows" ]; then
@@ -972,14 +981,87 @@ function workflowRun() {
 	fi
 }
 
+# --------------------------
+# Navigation & Search Utilities
+# --------------------------
+
+function zgco() {
+	local recent_branches
+	recent_branches=$(git reflog --date=local --all 2>/dev/null | grep checkout | grep -o "checkout: moving from .* to .*" | sed 's/checkout: moving from //g' | awk '{print $NF}' | awk '!seen[$0]++' | head -n 15)
+
+	local all_branches
+	all_branches=$(git branch -a | sed 's/^[ *]*//' | sed 's/remotes\/origin\///')
+
+	local sorted_branches
+	sorted_branches=$(echo "$recent_branches\n$all_branches" | awk '!seen[$0]++')
+
+	local selected_branch
+	selected_branch=$(echo "$sorted_branches" | fzf --prompt="Select branch: " --height=40%)
+
+	if [ -n "$selected_branch" ]; then
+		git checkout "$selected_branch"
+	fi
+}
+
+function zf() {
+	local selected
+	selected=$(find . -maxdepth 3 -not -path '*/node_modules/*' 2>/dev/null | fzf --preview 'if [ -d {} ]; then ls -la {}; else bat --color=always --style=numbers --line-range=:100 {} 2>/dev/null || cat {} 2>/dev/null || echo "Binary file or no preview available"; fi')
+
+	if [ -n "$selected" ]; then
+		if [ -d "$selected" ]; then
+			cd "$selected"
+		else
+			open "$selected"
+		fi
+	fi
+}
+
+function zfunc() {
+	local func_list
+	func_list=$(grep -E '^(function [a-zA-Z_][a-zA-Z0-9_]*\(\)|function [a-zA-Z_][a-zA-Z0-9_]* \{|[a-zA-Z_][a-zA-Z0-9_]*\(\))' ~/.zshrc | sed -E 's/^function ([a-zA-Z_][a-zA-Z0-9_]*).*$/\1/; s/^([a-zA-Z_][a-zA-Z0-9_]*)\(\).*$/\1/' | sort -u | fzf --preview 'awk "/^function {}[({]/ {p=1} p {print} /^}}/ && p {exit}" ~/.zshrc | bat --color=always --language=bash --style=numbers' --preview-window=right:60%:wrap --height=80%)
+
+	if [ -n "$func_list" ]; then
+		print -z "$func_list "
+	fi
+}
+
+# --------------------------
+# DevOps / Work
+# --------------------------
+
+function odsAuthConnect() {
+	~/alloydb-auth-proxy projects/one-global-ods-uat/locations/asia-southeast1/clusters/sea1-uat-ods-db-cluster/instances/ods-ecomapi --port 9999 --auto-iam-authn --public-ip
+}
+
+function dockerDaemonStart() { colima start; }
+
+function deploy() {
+	local ref="$1"
+	local env="$2"
+	gh workflow run deploy-test.yml --ref "$ref" --field env="$env"
+}
+
 function killPort() {
 	kill $(lsof -t -i:$1)
 }
-# Neovim Configuration
-export EDITOR="nvim"
-alias vim="nvim"
+
+# --------------------------
+# Editors & IDEs
+# --------------------------
+
+function cursor() {
+	open -n ~/Downloads/Apps/Cursor.app --args $PWD
+}
+
+function webstorm() {
+	open -a "$HOME/Apps/WebStorm.app" "${1:-.}"
+}
 
 # Added by Antigravity
 function agy() {
     antigravity "${@:-.}"
+}
+
+function rune2e() {
+	PWDEBUG=1 npm run test --tags=@"$1" --testbrowser="$2"
 }
