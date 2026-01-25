@@ -1,0 +1,21 @@
+{
+  "name": "hyper-tab-search",
+  "version": "1.0.0",
+  "description": "Search through open tabs/sessions in Hyper terminal, similar to Warp",
+  "main": "index.js",
+  "keywords": [
+    "hyper",
+    "hyper-plugin",
+    "terminal",
+    "tab-search",
+    "session-search"
+  ],
+  "author": "",
+  "license": "MIT",
+  "peerDependencies": {
+    "react": "*"
+  },
+  "dependencies": {
+    "fuzzysort": "^2.0.4"
+  }
+}
