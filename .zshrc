@@ -76,6 +76,8 @@ alias lint="npm run lint"
 alias build="npm run build"
 alias test="npm run test:one-click-booking"
 alias start="npm run start"
+alias fo='open $(fzf)'
+alias fd='open "$(dirname "$(fzf)")"'
 
 # =============================================================================
 # FUNCTIONS
@@ -103,6 +105,203 @@ function gpup() {
 	local current_branch=$(git rev-parse --abbrev-ref HEAD)
 	echo "Pushing and setting upstream for branch: $current_branch to remote: $remote"
 	git push --set-upstream "$remote" "$current_branch"
+}
+
+# --------------------------
+# File Finder with Actions
+# --------------------------
+
+function fs() {
+	# Use fzf to search for a file (excluding ~/Library)
+	local selected_file
+	# Set FZF_DEFAULT_COMMAND to use find and exclude Library folders
+	FZF_DEFAULT_COMMAND="find . -type f -not -path '*/Library/*' -not -path '$HOME/Library/*' 2>/dev/null" \
+		selected_file=$(fzf --prompt="Search for file: " --height=100% --preview="bat --color=always --style=numbers {}" 2>/dev/null || fzf --prompt="Search for file: " --height=60%)
+	
+	# Exit if no file was selected
+	if [ -z "$selected_file" ]; then
+		echo "No file selected"
+		return 0
+	fi
+	
+	# Get the directory containing the file
+	local file_dir=$(dirname "$selected_file")
+	
+	# Prompt user for action
+	echo "\nSelected: $selected_file"
+	echo "\nChoose an action:"
+	echo "  1) Open file"
+	echo "  2) Open directory"
+	echo "  3) Navigate terminal"
+	echo "  q) Quit"
+	
+	# Read user choice
+	read -k 1 "choice?"
+	echo "\n"
+	
+	case "$choice" in
+		1)
+			echo "Opening file: $selected_file"
+			if command -v open >/dev/null 2>&1; then
+				# macOS
+				open "$selected_file"
+			elif command -v xdg-open >/dev/null 2>&1; then
+				# Linux
+				xdg-open "$selected_file"
+			else
+				# Fallback to default editor
+				${EDITOR:-vim} "$selected_file"
+			fi
+			;;
+		2)
+			echo "Opening directory: $file_dir"
+			if command -v open >/dev/null 2>&1; then
+				# macOS
+				open "$file_dir"
+			elif command -v xdg-open >/dev/null 2>&1; then
+				# Linux
+				xdg-open "$file_dir"
+			else
+				echo "Cannot open directory in file manager"
+			fi
+			;;
+		3)
+			echo "Navigating to: $file_dir"
+			cd "$file_dir"
+			;;
+		q|Q)
+			echo "Cancelled"
+			;;
+		*)
+			echo "Invalid choice"
+			;;
+	esac
+}
+
+# --------------------------
+# Text Search with Actions
+# --------------------------
+
+function ts() {
+	# Check if ripgrep is installed
+	if ! command -v rg >/dev/null 2>&1; then
+		echo "Error: ripgrep (rg) is not installed. Install it with: brew install ripgrep"
+		return 1
+	fi
+	
+	# Prompt for search term
+	echo "Enter search term:"
+	read -r search_term
+	
+	# Exit if no search term provided
+	if [ -z "$search_term" ]; then
+		echo "No search term provided"
+		return 0
+	fi
+	
+	echo "Searching for: '$search_term'"
+	echo ""
+	
+	# Use ripgrep with fzf for interactive selection (excluding ~/Library)
+	local selected
+	selected=$(rg --line-number --color=always --smart-case --glob='!Library/' --glob="!$HOME/Library/**" "$search_term" 2>/dev/null | \
+		fzf --ansi \
+		    --height=100% \
+		    --delimiter=: \
+		    --preview='bat --color=always --style=numbers --highlight-line {2} {1}' \
+		    --preview-window=right:60%:wrap \
+		    --prompt="Select match: " \
+		    --bind="enter:accept")
+	
+	# Exit if no selection made
+	if [ -z "$selected" ]; then
+		echo "No match selected"
+		return 0
+	fi
+	
+	# Parse the selected line (format: filename:line:content)
+	local file_path=$(echo "$selected" | cut -d: -f1)
+	local line_number=$(echo "$selected" | cut -d: -f2)
+	local file_dir=$(dirname "$file_path")
+	
+	# Prompt user for action
+	echo "\nSelected: $file_path:$line_number"
+	echo "\nChoose an action:"
+	echo "  1) Open file at line"
+	echo "  2) Open file"
+	echo "  3) Open directory"
+	echo "  4) Navigate terminal"
+	echo "  5) Copy file path"
+	echo "  q) Quit"
+	
+	# Read user choice
+	read -k 1 "choice?"
+	echo "\n"
+	
+	case "$choice" in
+		1)
+			echo "Opening file at line $line_number: $file_path"
+			if command -v code >/dev/null 2>&1; then
+				# VS Code
+				code -g "$file_path:$line_number"
+			elif [ "$EDITOR" = "nvim" ] || [ "$EDITOR" = "vim" ]; then
+				# Neovim/Vim
+				$EDITOR "+$line_number" "$file_path"
+			else
+				# Fallback
+				${EDITOR:-vim} "$file_path"
+			fi
+			;;
+		2)
+			echo "Opening file: $file_path"
+			if command -v open >/dev/null 2>&1; then
+				# macOS
+				open "$file_path"
+			elif command -v xdg-open >/dev/null 2>&1; then
+				# Linux
+				xdg-open "$file_path"
+			else
+				# Fallback to editor
+				${EDITOR:-vim} "$file_path"
+			fi
+			;;
+		3)
+			echo "Opening directory: $file_dir"
+			if command -v open >/dev/null 2>&1; then
+				# macOS
+				open "$file_dir"
+			elif command -v xdg-open >/dev/null 2>&1; then
+				# Linux
+				xdg-open "$file_dir"
+			else
+				echo "Cannot open directory in file manager"
+			fi
+			;;
+		4)
+			echo "Navigating to: $file_dir"
+			cd "$file_dir"
+			;;
+		5)
+			echo "Copying path to clipboard: $file_path"
+			if command -v pbcopy >/dev/null 2>&1; then
+				# macOS
+				echo "$file_path" | pbcopy
+				echo "✓ Path copied to clipboard"
+			elif command -v xclip >/dev/null 2>&1; then
+				# Linux
+				echo "$file_path" | xclip -selection clipboard
+				echo "✓ Path copied to clipboard"
+			else
+				echo "Clipboard command not found. Path: $file_path"
+			fi
+			;;
+		q|Q)
+			echo "Cancelled"
+			;;
+		*)
+			echo "Invalid choice"
+			;;
+	esac
 }
 
 # --------------------------
@@ -520,6 +719,45 @@ query {
 )'
 }
 
+# --------------------------
+# PR Notification Helpers
+# --------------------------
+
+function _gh_pr_is_new_hash() {
+	local hash="$1"
+	local cache_file="$2"
+	local timestamp="$3"
+	
+	if grep -q "^$hash|" "$cache_file"; then
+		local stored_ts
+		stored_ts=$(grep "^$hash|" "$cache_file" | tail -1 | cut -d'|' -f2)
+		local age=$((timestamp - stored_ts))
+		[[ $age -gt 86400 ]] && return 0 || return 1
+	else
+		return 0
+	fi
+}
+
+function _gh_pr_store_hash() {
+	local hash="$1"
+	local cache_file="$2"
+	local timestamp="$3"
+	echo "$hash|$timestamp" >>"$cache_file"
+}
+
+function _gh_pr_notify() {
+	local title="$1"
+	local url="$2"
+	local group="$3"
+	local has_notifier="$4"
+	
+	if [[ "$has_notifier" == true ]]; then
+		terminal-notifier -title "$title" -message "$url" -open "$url" -group "$group" -sound "default"
+	else
+		osascript -e "display notification \"$url\" with title \"$title\""
+	fi
+}
+
 function notify_my_prs_status() {
 	command -v gh >/dev/null || return
 	command -v jq >/dev/null || return
@@ -529,8 +767,13 @@ function notify_my_prs_status() {
 		has_notifier=true
 	fi
 
+	# Get current GitHub user with error handling
 	local current_user
-	current_user=$(gh api user --jq .login)
+	if ! current_user=$(gh api user --jq .login 2>/dev/null); then
+		echo "⚠️  Failed to get GitHub user. Check 'gh auth status'" >&2
+		return 1
+	fi
+	
 	local cache_file="$HOME/.gh_pr_notify_cache"
 	touch "$cache_file"
 
@@ -554,8 +797,9 @@ function notify_my_prs_status() {
 		fi
 	fi
 
+	# Fetch PR data with error handling
 	local data
-	data=$(gh api graphql -f query="
+	if ! data=$(gh api graphql -f query="
   query {
     myPRs: search(query: \"is:pr is:open author:@me\", type: ISSUE, first: 10) {
       nodes: edges {
@@ -565,6 +809,7 @@ function notify_my_prs_status() {
             title
             url
             mergeStateStatus
+            mergeable
             updatedAt
             commits(last: 1) {
               nodes {
@@ -606,7 +851,10 @@ function notify_my_prs_status() {
         }
       }
     }
-  }")
+  }" 2>/dev/null); then
+		echo "⚠️  Failed to fetch PR data from GitHub" >&2
+		return 1
+	fi
 
 	# Optional debug log
 	if [[ "${DEBUG_GH_PR:-}" == "1" ]]; then
@@ -617,38 +865,12 @@ function notify_my_prs_status() {
 	local timestamp=$current_time
 	local count=0
 
-	function is_new_hash() {
-		local hash="$1"
-		if grep -q "^$hash|" "$cache_file"; then
-			local stored_ts
-			stored_ts=$(grep "^$hash|" "$cache_file" | tail -1 | cut -d'|' -f2)
-			local age=$((timestamp - stored_ts))
-			[[ $age -gt 86400 ]] && return 0 || return 1
-		else
-			return 0
-		fi
-	}
-
-	function store_hash() {
-		echo "$1|$timestamp" >>"$cache_file"
-	}
-
-	function notify() {
-		local title="$1"
-		local url="$2"
-		local group="$3"
-		if [[ "$has_notifier" == true ]]; then
-			terminal-notifier -title "$title" -message "$url" -open "$url" -group "$group" -sound "default"
-		else
-			osascript -e "display notification \"$url\" with title \"$title\""
-		fi
-	}
-
 	## PRs authored by me
-	echo "$data" | jq -c '.data.myPRs.nodes[].node' | while read -r pr; do
+	while read -r pr; do
 		local url=$(echo "$pr" | jq -r '.url')
 		local number=$(echo "$pr" | jq -r '.number')
 		local state=$(echo "$pr" | jq -r '.mergeStateStatus')
+		local mergeable=$(echo "$pr" | jq -r '.mergeable')
 		local updated_at=$(echo "$pr" | jq -r '.updatedAt')
 		local ci_status=$(echo "$pr" | jq -r '.commits.nodes[0].commit.statusCheckRollup.state // "NO_CI"')
 
@@ -665,6 +887,9 @@ function notify_my_prs_status() {
 		if [[ "$state" == "CLEAN" ]]; then
 			summary="#$number ✅ Ready to merge"
 			notify_flag=true
+		elif [[ "$mergeable" == "CONFLICTING" ]]; then
+			summary="#$number ⚠️ Has conflicts"
+			notify_flag=true
 		elif [[ -n "$any_check_failed" ]]; then
 			summary="#$number 🚨 Check Failed: $any_check_failed"
 			notify_flag=true
@@ -673,17 +898,17 @@ function notify_my_prs_status() {
 			notify_flag=true
 		fi
 
-		local hash=$(echo "$number|$state|$ci_status|$any_check_failed|$updated_at" | shasum | awk '{print $1}')
+		local hash=$(echo "$number|$state|$mergeable|$ci_status|$any_check_failed|$updated_at" | shasum | awk '{print $1}')
 
-		if [[ "$notify_flag" == true ]] && is_new_hash "$hash"; then
-			notify "$summary" "$url" "github-prs"
-			store_hash "$hash"
+		if [[ "$notify_flag" == true ]] && _gh_pr_is_new_hash "$hash" "$cache_file" "$timestamp"; then
+			_gh_pr_notify "$summary" "$url" "github-prs" "$has_notifier"
+			_gh_pr_store_hash "$hash" "$cache_file" "$timestamp"
 			count=$((count + 1))
 		fi
-	done
+	done < <(echo "$data" | jq -c '.data.myPRs.nodes[].node')
 
 	## PRs requesting my review
-	echo "$data" | jq -c '.data.prsNeedingMyReview.nodes[].node' | while read -r pr; do
+	while read -r pr; do
 		local url=$(echo "$pr" | jq -r '.url')
 		local number=$(echo "$pr" | jq -r '.number')
 		local author=$(echo "$pr" | jq -r '.author.login')
@@ -693,12 +918,12 @@ function notify_my_prs_status() {
 		local summary="#$number 🆕 Review Requested"
 		local hash=$(echo "REVIEW|$number|$author|$updated_at|$review_decision" | shasum | awk '{print $1}')
 
-		if is_new_hash "$hash"; then
-			notify "$summary" "$url" "github-reviews"
-			store_hash "$hash"
+		if _gh_pr_is_new_hash "$hash" "$cache_file" "$timestamp"; then
+			_gh_pr_notify "$summary" "$url" "github-reviews" "$has_notifier"
+			_gh_pr_store_hash "$hash" "$cache_file" "$timestamp"
 			count=$((count + 1))
 		fi
-	done
+	done < <(echo "$data" | jq -c '.data.prsNeedingMyReview.nodes[].node')
 
 	if [[ $count -gt 0 ]]; then
 		echo "🔣 $count GitHub PR notification(s) sent."
@@ -711,15 +936,31 @@ function start_pr_notifications() {
 		return
 	fi
 
-	echo "🚀 Starting GitHub PR notifications loop (every 30 seconds)..."
+	echo "🚀 Starting GitHub PR notifications loop (every 120 seconds)..."
 	(
 		while true; do
 			notify_my_prs_status
-			sleep 50
+			sleep 120
 		done
 	) &
 
 	export PR_NOTIFY_LOOP_PID=$!
+}
+
+function stop_pr_notifications() {
+	if [[ -z "${PR_NOTIFY_LOOP_PID:-}" ]]; then
+		echo "⚠️  No PR notification loop is running"
+		return 1
+	fi
+	
+	if kill -0 "$PR_NOTIFY_LOOP_PID" 2>/dev/null; then
+		kill "$PR_NOTIFY_LOOP_PID"
+		echo "✅ Stopped PR notifications (PID: $PR_NOTIFY_LOOP_PID)"
+		unset PR_NOTIFY_LOOP_PID
+	else
+		echo "⚠️  Process $PR_NOTIFY_LOOP_PID is not running"
+		unset PR_NOTIFY_LOOP_PID
+	fi
 }
 
 function clear_pr_notification_cache() {
@@ -889,13 +1130,13 @@ function workflowRun() {
 		local input_section
 		input_section=$(sed -n "/^      ${input_key}:/,/^      [a-z]/p" "$workflow_file" | sed '$d')
 
-		local input_type=$(echo "$input_section" | grep "type:" | sed 's/.*type:[[:space:]]*//' | tr -d '"')
-		local input_desc=$(echo "$input_section" | grep "description:" | sed 's/.*description:[[:space:]]*//' | tr -d '"')
-		local input_required=$(echo "$input_section" | grep "required:" | sed 's/.*required:[[:space:]]*//' | tr -d '"')
+		local input_type=$(echo "$input_section" | grep "type:" | sed 's/.*type:[[:space:]]*//' | tr -d '"' | tr -d "'")
+		local input_desc=$(echo "$input_section" | grep "description:" | sed 's/.*description:[[:space:]]*//' | tr -d '"' | tr -d "'")
+		local input_required=$(echo "$input_section" | grep "required:" | sed 's/.*required:[[:space:]]*//' | tr -d '"' | tr -d "'")
 
 		if [ "$input_type" = "choice" ]; then
 			local options_list
-			options_list=$(echo "$input_section" | sed -n '/options:/,/^      [a-z]/p' | grep '^          -' | sed 's/^          - //' | tr -d '"')
+			options_list=$(echo "$input_section" | sed -n '/options:/,/^      [a-z]/p' | grep '^          -' | sed 's/^          - //' | tr -d '"' | tr -d "'")
 
 			if [ -n "$options_list" ]; then
 				local selected_option
@@ -1003,22 +1244,14 @@ function zgco() {
 	fi
 }
 
-function zf() {
-	local selected
-	selected=$(find . -maxdepth 3 -not -path '*/node_modules/*' 2>/dev/null | fzf --preview 'if [ -d {} ]; then ls -la {}; else bat --color=always --style=numbers --line-range=:100 {} 2>/dev/null || cat {} 2>/dev/null || echo "Binary file or no preview available"; fi')
-
-	if [ -n "$selected" ]; then
-		if [ -d "$selected" ]; then
-			cd "$selected"
-		else
-			open "$selected"
-		fi
-	fi
-}
-
 function zfunc() {
 	local func_list
-	func_list=$(grep -E '^(function [a-zA-Z_][a-zA-Z0-9_]*\(\)|function [a-zA-Z_][a-zA-Z0-9_]* \{|[a-zA-Z_][a-zA-Z0-9_]*\(\))' ~/.zshrc | sed -E 's/^function ([a-zA-Z_][a-zA-Z0-9_]*).*$/\1/; s/^([a-zA-Z_][a-zA-Z0-9_]*)\(\).*$/\1/' | sort -u | fzf --preview 'awk "/^function {}[({]/ {p=1} p {print} /^}}/ && p {exit}" ~/.zshrc | bat --color=always --language=bash --style=numbers' --preview-window=right:60%:wrap --height=80%)
+	func_list=$(grep -E '^(function [a-zA-Z_][a-zA-Z0-9_]*\(\)|function [a-zA-Z_][a-zA-Z0-9_]* \{|[a-zA-Z_][a-zA-Z0-9_]*\(\))' ~/.zshrc | \
+		sed -E 's/^function ([a-zA-Z_][a-zA-Z0-9_]*).*$/\1/; s/^([a-zA-Z_][a-zA-Z0-9_]*)\(\).*$/\1/' | \
+		sort -u | \
+		fzf --preview 'awk -v fname={} '\''$0 ~ "^function " fname || $0 ~ "^" fname "\\(\\)" {p=1} p {print} /^}$/ && p {exit}'\'' ~/.zshrc | bat --color=always --language=bash --style=numbers' \
+		    --preview-window=right:80%:wrap \
+		    --height=80%)
 
 	if [ -n "$func_list" ]; then
 		print -z "$func_list "
@@ -1064,4 +1297,215 @@ function agy() {
 
 function rune2e() {
 	PWDEBUG=1 npm run test --tags=@"$1" --testbrowser="$2"
+}
+
+# =============================================================================
+# JIRA CLI FUNCTIONS
+# =============================================================================
+
+# Get all Jira projects
+function jiraProjects() {
+    echo "📋 Fetching all Jira projects..."
+    acli jira project list --paginate
+}
+
+# Get recent Jira projects
+function jiraProjectsRecent() {
+    echo "🕐 Recently viewed projects:"
+    acli jira project list --recent
+}
+
+# Export all projects to JSON
+function jiraProjectsExport() {
+    local output="${1:-jira-projects.json}"
+    echo "📊 Exporting all projects to $output..."
+    acli jira project list --paginate --json > "$output"
+    echo "✓ Exported to $output"
+}
+
+# View specific project details
+function jiraProjectView() {
+    if [ -z "$1" ]; then
+        echo "Usage: jiraProjectView PROJECT-KEY"
+        return 1
+    fi
+    acli jira project view --key "$1"
+}
+
+# --------------------------
+# eCom3 Sprint Functions
+# --------------------------
+
+# Get all tickets in eCom3 active sprint
+function ecom3Sprint() {
+    echo "🏃 Fetching eCom3 active sprint tickets..."
+    acli jira workitem search --jql "sprint in openSprints() AND project = NE" --fields "key,summary,assignee,status,priority" --paginate
+}
+
+# Get eCom3 active sprint tickets and export to CSV
+function ecom3SprintExport() {
+    local output="${1:-ecom3-sprint-$(date +%Y%m%d).csv}"
+    echo "📊 Exporting eCom3 active sprint to $output..."
+    acli jira workitem search --jql "sprint in openSprints() AND project = NE" --csv --paginate > "$output"
+    echo "✓ Exported to $output"
+}
+
+# Get YOUR tickets in eCom3 active sprint
+function ecom3SprintMine() {
+    echo "🏃 Your tickets in eCom3 active sprint:"
+    acli jira workitem search --jql "sprint in openSprints() AND project = NE AND assignee = currentUser()" --fields "key,summary,status,priority"
+}
+
+# Get eCom3 sprint summary by status
+function ecom3SprintSummary() {
+    echo "📊 eCom3 Active Sprint Summary"
+    echo "=============================="
+    echo ""
+    
+    local jql="sprint in openSprints() AND project = NE"
+    
+    # Total count
+    local total=$(acli jira workitem search --jql "$jql" --count 2>/dev/null | grep -o '[0-9]*' | head -1)
+    echo "Total Tickets: $total"
+    echo ""
+    
+    # By status
+    echo "By Status:"
+    for status in "TO DO" "IN PROGRESS" "IN REVIEW" "DONE"; do
+        local status_jql="$jql AND status = '$status'"
+        local count=$(acli jira workitem search --jql "$status_jql" --count 2>/dev/null | grep -o '[0-9]*' | head -1)
+        printf "  %-15s %s\n" "$status:" "$count"
+    done
+}
+
+# --------------------------
+# Jira Hierarchy View
+# --------------------------
+
+# View sprint tickets organized by type with color coding
+function jiraHierarchy() {
+    local project="${1:-}"
+    local jql="sprint in openSprints()"
+    
+    if [ -n "$project" ]; then
+        jql="$jql AND project = $project"
+    fi
+    
+    echo "🔍 Fetching tickets from active sprint${project:+ (Project: $project)}..."
+    
+    # Fetch tickets as JSON
+    local tickets_json=$(acli jira workitem search --jql "$jql" --fields "key,summary,issuetype,status,assignee,priority" --paginate --json 2>/dev/null)
+    
+    if [ -z "$tickets_json" ] || [ "$tickets_json" = "[]" ]; then
+        echo "No tickets found in active sprint."
+        return 1
+    fi
+    
+    # Count total tickets
+    local total=$(echo "$tickets_json" | jq 'length' 2>/dev/null)
+    echo "✓ Found $total tickets"
+    echo ""
+    
+    # Print summary
+    echo "================================================================================"
+    echo "📊 SPRINT SUMMARY"
+    echo "================================================================================"
+    echo "Total Tickets: $total"
+    echo ""
+    
+    # Count by type
+    echo "By Type:"
+    echo "$tickets_json" | jq -r '[.[] | .fields.issuetype.name] | group_by(.) | map({type: .[0], count: length}) | sort_by(-.count) | .[] | "  \(.type | tostring | .[0:20])  \(.count)"' 2>/dev/null
+    
+    echo ""
+    echo "By Status:"
+    echo "$tickets_json" | jq -r '[.[] | .fields.status.name] | group_by(.) | map({status: .[0], count: length}) | sort_by(-.count) | .[] | "  \(.status | tostring | .[0:25])  \(.count)"' 2>/dev/null
+    
+    echo "================================================================================"
+    echo ""
+    
+    # Print organized by type
+    echo "📋 TICKETS BY TYPE"
+    echo "================================================================================"
+    
+    # Color codes
+    local BOLD="\033[1m"
+    local BLUE="\033[94m"
+    local GREEN="\033[92m"
+    local YELLOW="\033[93m"
+    local GRAY="\033[90m"
+    local RESET="\033[0m"
+    
+    # Function to print tickets of a specific type
+    print_type_group() {
+        local type="$1"
+        local icon="$2"
+        
+        local type_tickets=$(echo "$tickets_json" | jq -c "[.[] | select(.fields.issuetype.name == \"$type\")]" 2>/dev/null)
+        local count=$(echo "$type_tickets" | jq 'length' 2>/dev/null)
+        
+        if [ "$count" -gt 0 ]; then
+            echo ""
+            echo "${type}S ($count):"
+            echo "--------------------------------------------------------------------------------"
+            
+            echo "$type_tickets" | jq -r '.[] | 
+                .key as $key |
+                .fields.summary as $summary |
+                .fields.status.name as $status |
+                (.fields.assignee.displayName // "Unassigned") as $assignee |
+                (.fields.priority.name // "Medium") as $priority |
+                "\($key)|\($status)|\($summary)|\($assignee)|\($priority)"
+            ' 2>/dev/null | while IFS='|' read -r key status summary assignee priority; do
+                # Status color
+                local status_color="$GRAY"
+                if [[ "$status" =~ "DONE" ]] || [[ "$status" =~ "Done" ]]; then
+                    status_color="$GREEN"
+                elif [[ "$status" =~ "PROGRESS" ]] || [[ "$status" =~ "REVIEW" ]]; then
+                    status_color="$YELLOW"
+                fi
+                
+                # Priority indicator
+                local priority_icon="🟡"
+                case "$priority" in
+                    "Highest") priority_icon="🔴" ;;
+                    "High") priority_icon="🟠" ;;
+                    "Medium") priority_icon="🟡" ;;
+                    "Low") priority_icon="🟢" ;;
+                    "Lowest") priority_icon="⚪" ;;
+                esac
+                
+                # Truncate summary
+                local summary_short="${summary:0:50}"
+                if [ ${#summary} -gt 50 ]; then
+                    summary_short="${summary_short}..."
+                fi
+                
+                echo -e "${icon} ${BOLD}${BLUE}${key}${RESET} ${priority_icon} ${status_color}[${status}]${RESET} ${summary_short} ${GRAY}(${assignee})${RESET}"
+            done
+        fi
+    }
+    
+    # Print each type
+    print_type_group "Epic" "📦"
+    print_type_group "Story" "📖"
+    print_type_group "Task" "✓"
+    print_type_group "Bug" "🐛"
+    print_type_group "Sub-task" "↳"
+    
+    # Print other types
+    local other_types=$(echo "$tickets_json" | jq -r '[.[] | .fields.issuetype.name] | unique | .[] | select(. != "Epic" and . != "Story" and . != "Task" and . != "Bug" and . != "Sub-task")' 2>/dev/null)
+    
+    if [ -n "$other_types" ]; then
+        echo "$other_types" | while read -r type; do
+            print_type_group "$type" "•"
+        done
+    fi
+    
+    echo ""
+}
+
+# View eCom3 sprint tickets organized by type
+function ecom3Hierarchy() {
+    jiraHierarchy NE
 }
