@@ -40,8 +40,6 @@ eval "$(zoxide init zsh)"
 # -- NVM --
 [ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && \. "/opt/homebrew/opt/nvm/nvm.sh"                                       # This loads nvm
 [ -s "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" ] && \. "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" # This loads nvm bash_completion
-# Backup NVM loading (from original file, kept for safety)
-[ -s "$HOME/.nvm/nvm.sh" ] && source "$HOME/.nvm/nvm.sh"
 
 # -- Google Cloud SDK --
 if [ -f '/Users/nam.nguyenv/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/nam.nguyenv/google-cloud-sdk/path.zsh.inc'; fi
@@ -68,7 +66,8 @@ alias gbd="git branch -D"
 alias grss="git reset --soft"
 alias gsts="git stash push"
 alias gsta="git stash apply"
-alias gstsn="git stash save -m $1"
+function gstsn() { git stash save -m "$1"; }
+function gcm() { git commit -m "$1"; }
 
 # -- Node / NPM --
 alias dev="npm run dev"
@@ -133,6 +132,7 @@ function fs() {
 	echo "  1) Open file"
 	echo "  2) Open directory"
 	echo "  3) Navigate terminal"
+	echo "  4) Copy file path"
 	echo "  q) Quit"
 	
 	# Read user choice
@@ -168,6 +168,18 @@ function fs() {
 		3)
 			echo "Navigating to: $file_dir"
 			cd "$file_dir"
+			;;
+		4)
+			echo "Copying path to clipboard: $selected_file"
+			if command -v pbcopy >/dev/null 2>&1; then
+				echo "$selected_file" | pbcopy
+				echo "✓ Path copied to clipboard"
+			elif command -v xclip >/dev/null 2>&1; then
+				echo "$selected_file" | xclip -selection clipboard
+				echo "✓ Path copied to clipboard"
+			else
+				echo "Clipboard command not found. Path: $selected_file"
+			fi
 			;;
 		q|Q)
 			echo "Cancelled"
@@ -354,7 +366,7 @@ function pr() {
 
 	current_branch=$(git branch --show-current)
 	default_target_branch="develop"
-	default_reviewers="son-tranhh-otsv,sy-nguyenv-otsv,hoang-trant-otsv,vinh-huynhx-otsv"
+	default_reviewers="son-tranhh-otsv,sy-nguyenv-otsv,hoang-trant-otsv,anh-nguyenpn-otsv,khiem-let-otsv"
 	default_label=""
 
 	if [ -z "$current_branch" ]; then
@@ -1275,7 +1287,7 @@ function deploy() {
 }
 
 function killPort() {
-	kill $(lsof -t -i:$1)
+	lsof -ti :$1 | xargs kill -9
 }
 
 # --------------------------
@@ -1509,3 +1521,129 @@ function jiraHierarchy() {
 function ecom3Hierarchy() {
     jiraHierarchy NE
 }
+
+function killPid() {
+
+# Check if a PID was provided
+if [ -z "$1" ]; then
+  echo "Usage: $0 <PID>"
+  echo "Example: $0 12345"
+  exit 1
+fi
+
+PID=$1
+
+# Try to kill the process
+if kill -0 "$PID" >/dev/null 2>&1; then
+    kill -9 "$PID"
+    if [ $? -eq 0 ]; then
+        echo "Successfully killed process $PID"
+    else
+        echo "Failed to kill process $PID"
+    fi
+else
+    echo "Process $PID does not exist"
+fi
+
+}
+
+# --------------------------
+# Jira / ACLI Utilities
+# --------------------------
+
+function jbranch() {
+	echo "🔍 Fetching your in-progress Jira tickets..."
+
+	# Fetch tickets assigned to current user with status "In Progress"
+	local tickets_json
+	tickets_json=$(acli jira workitem search \
+		--jql "assignee = currentUser() AND statusCategory = 'In Progress'" \
+		--fields "issuetype,key,summary" \
+		--json 2>&1)
+
+	if [[ $? -ne 0 ]]; then
+		echo "❌ Failed to fetch tickets. Make sure you're authenticated with acli."
+		echo "$tickets_json"
+		return 1
+	fi
+
+	# Check if any tickets were found
+	local count
+	count=$(echo "$tickets_json" | jq 'length')
+	if [[ "$count" -eq 0 ]]; then
+		echo "📭 No in-progress tickets found assigned to you."
+		return 0
+	fi
+
+	# Build a list for fzf: "KEY | TYPE | SUMMARY"
+	local ticket_list
+	ticket_list=$(echo "$tickets_json" | jq -r '.[] | "\(.key) | \(.fields.issuetype.name) | \(.fields.summary)"')
+
+	# Let user pick a ticket with fzf
+	local selected
+	selected=$(echo "$ticket_list" | fzf --prompt="Select ticket: " --height=40% --reverse)
+
+	if [[ -z "$selected" ]]; then
+		echo "❌ No ticket selected."
+		return 0
+	fi
+
+	# Parse the selected ticket
+	local ticket_key ticket_type ticket_summary
+	ticket_key=$(echo "$selected" | awk -F' \\| ' '{print $1}')
+	ticket_type=$(echo "$selected" | awk -F' \\| ' '{print $2}')
+	ticket_summary=$(echo "$selected" | awk -F' \\| ' '{print $3}')
+
+	# Extract ticket number from key (e.g., NE-36809 -> 36809)
+	local ticket_number
+	ticket_number=$(echo "$ticket_key" | sed 's/NE-//')
+
+	# Slugify the summary: lowercase, strip brackets/special chars, replace spaces with hyphens
+	local slug
+	slug=$(echo "$ticket_summary" | \
+		sed 's/\[//g; s/\]//g' | \
+		tr '[:upper:]' '[:lower:]' | \
+		sed 's/[^a-z0-9 -]//g' | \
+		sed 's/  */ /g; s/^ //; s/ $//' | \
+		sed 's/ /-/g')
+
+	# Determine branch prefix based on issue type
+	local branch_name
+	case "${ticket_type:l}" in
+		bug)
+			branch_name="bugfix/NE-${ticket_number}-${slug}"
+			;;
+		*)
+			branch_name="feat/NE-${ticket_number}-${slug}"
+			;;
+	esac
+
+	echo ""
+	echo "📋 Ticket:  $ticket_key - $ticket_summary"
+	echo "🏷️  Type:    $ticket_type"
+	echo "🌿 Branch:  $branch_name"
+	echo ""
+
+	# Confirm and create the branch
+	read -q "confirm?Create branch '$branch_name'? (y/N): "
+	echo ""
+
+	if [[ "$confirm" == "y" ]]; then
+		git checkout -b "$branch_name"
+		if [[ $? -eq 0 ]]; then
+			echo "✅ Branch '$branch_name' created and checked out!"
+		else
+			echo "❌ Failed to create branch. It may already exist."
+		fi
+	else
+		echo "❌ Cancelled."
+	fi
+}
+
+# pnpm
+export PNPM_HOME="/Users/nam.nguyenv/Library/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+# pnpm end
