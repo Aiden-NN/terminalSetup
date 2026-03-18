@@ -282,9 +282,24 @@ Automated background monitoring of your GitHub PRs with macOS notifications.
     gh auth login
     ```
 
-4.  **Jira CLI Authentication** (Optional): To use Jira CLI features:
+4.  **Jira CLI Setup** (Optional): To use Jira CLI features, install and authenticate `acli`:
+
+    **Install via Homebrew** (automatically handled by `setup.sh` / `Brewfile`):
+    ```bash
+    brew tap atlassian/homebrew-acli
+    brew install acli
+    ```
+
+    **Authenticate** with your Atlassian account:
     ```bash
     acli auth login
+    ```
+
+    You'll be prompted to enter your Atlassian site URL (e.g. `your-org.atlassian.net`) and an API token. Generate one at: `https://id.atlassian.com/manage-profile/security/api-tokens`
+
+    **Verify** the connection:
+    ```bash
+    acli jira project list
     ```
 
 ## Troubleshooting
