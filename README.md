@@ -49,6 +49,27 @@ This repository contains my personal configuration files (dotfiles) and a setup 
     *   For `.hyper.js`: Symlinks the file, backing up any existing one.
 *   **Sets up FZF**: Installs fzf key bindings and completion.
 
+## Highlighted Features
+
+These are the most powerful and frequently useful commands in this setup — great starting points for getting productive fast.
+
+| Command | Category | Description |
+|---------|----------|-------------|
+| [`myPRs`](#github--pr-utilities) | GitHub | Personal PR dashboard — see all your open PRs with approval status, CI results, merge state, and unresolved comments at a glance |
+| [`reviewNeeded`](#github--pr-utilities) | GitHub | Review queue dashboard — all PRs requesting your review with author, CI status, and merge state |
+| [`jbranch`](#branch--commit-utilities) | Git | Pick an in-progress Jira ticket via fuzzy search and auto-create a correctly named `feature/` or `bugfix/` branch |
+| [`gcmm`](#branch--commit-utilities) | Git | Auto-generate a conventional commit message from your branch name (e.g. `feat(NE-123): ...`), with Jira scope lookup and inline editing before committing |
+| [`ghrepo`](#github-repository-management) | GitHub | Interactively create a GitHub repo for work or personal account, set visibility, and wire up the remote origin with the correct SSH host |
+| [`killPort <port>`](#devops--work) | DevOps | Kill whatever process is occupying a given port — e.g. `killPort 3000` |
+| [`zfunc`](#branch--commit-utilities) | Shell | Fuzzy-search all your custom shell functions and aliases with a live preview, then paste the selected one directly into your prompt |
+| [`zgco`](#branch--commit-utilities) | Git | Fuzzy-find and checkout any local branch, with recent branches shown first |
+| [`goto`](#github--pr-utilities) | GitHub | Open the current repo's GitHub page in your browser instantly |
+| [`sshCheck`](#git-profile-check-sshcheck) | Git | Print the repo's remote URL, git user config, and test SSH connectivity — useful when switching between work and personal accounts |
+| [`fs`](#file-finder-with-actions-fs) | Shell | Interactive file finder with preview (`fzf` + `bat`) — open, navigate to, or copy path/content of any file |
+| [`gpup`](#git-utilities) | Git | Push the current branch and set upstream tracking in one command — supports custom remote targets |
+
+---
+
 ## Configuration & Features
 
 ### Shell (Zsh)
