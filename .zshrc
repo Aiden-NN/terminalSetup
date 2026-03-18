@@ -55,8 +55,10 @@ if [ -f '/Users/nam.nguyenv/google-cloud-sdk/completion.zsh.inc' ]; then . '/Use
 
 # -- Editors --
 alias code="open -a \"/Users/nam.nguyenv/Apps/VisualStudioCode.app\" ."
-alias shell='open ~/.zshrc'
+alias shell='agy ~/.zshrc'
 alias vim="nvim"
+alias copyPath='echo -n $PWD | pbcopy'
+alias clc=claude
 
 # -- Git --
 alias pul="git pull"
@@ -67,7 +69,6 @@ alias grss="git reset --soft"
 alias gsts="git stash push"
 alias gsta="git stash apply"
 function gstsn() { git stash save -m "$1"; }
-function gcm() { git commit -m "$1"; }
 
 # -- Node / NPM --
 alias dev="npm run dev"
@@ -133,12 +134,13 @@ function fs() {
 	echo "  2) Open directory"
 	echo "  3) Navigate terminal"
 	echo "  4) Copy file path"
+	echo "  5) Copy file content"
 	echo "  q) Quit"
-	
+
 	# Read user choice
 	read -k 1 "choice?"
 	echo "\n"
-	
+
 	case "$choice" in
 		1)
 			echo "Opening file: $selected_file"
@@ -170,15 +172,29 @@ function fs() {
 			cd "$file_dir"
 			;;
 		4)
-			echo "Copying path to clipboard: $selected_file"
+			local abs_path
+			abs_path="$(cd "$(dirname "$selected_file")" && pwd)/$(basename "$selected_file")"
+			echo "Copying path to clipboard: $abs_path"
 			if command -v pbcopy >/dev/null 2>&1; then
-				echo "$selected_file" | pbcopy
+				printf '%s' "$abs_path" | pbcopy
 				echo "✓ Path copied to clipboard"
 			elif command -v xclip >/dev/null 2>&1; then
-				echo "$selected_file" | xclip -selection clipboard
+				printf '%s' "$abs_path" | xclip -selection clipboard
 				echo "✓ Path copied to clipboard"
 			else
-				echo "Clipboard command not found. Path: $selected_file"
+				echo "Clipboard command not found. Path: $abs_path"
+			fi
+			;;
+		5)
+			echo "Copying file content to clipboard: $selected_file"
+			if command -v pbcopy >/dev/null 2>&1; then
+				cat "$selected_file" | pbcopy
+				echo "✓ File content copied to clipboard"
+			elif command -v xclip >/dev/null 2>&1; then
+				cat "$selected_file" | xclip -selection clipboard
+				echo "✓ File content copied to clipboard"
+			else
+				echo "Clipboard command not found"
 			fi
 			;;
 		q|Q)
@@ -1257,16 +1273,21 @@ function zgco() {
 }
 
 function zfunc() {
-	local func_list
-	func_list=$(grep -E '^(function [a-zA-Z_][a-zA-Z0-9_]*\(\)|function [a-zA-Z_][a-zA-Z0-9_]* \{|[a-zA-Z_][a-zA-Z0-9_]*\(\))' ~/.zshrc | \
-		sed -E 's/^function ([a-zA-Z_][a-zA-Z0-9_]*).*$/\1/; s/^([a-zA-Z_][a-zA-Z0-9_]*)\(\).*$/\1/' | \
-		sort -u | \
-		fzf --preview 'awk -v fname={} '\''$0 ~ "^function " fname || $0 ~ "^" fname "\\(\\)" {p=1} p {print} /^}$/ && p {exit}'\'' ~/.zshrc | bat --color=always --language=bash --style=numbers' \
+	local funcs aliases selected
+
+	funcs=$(grep -E '^(function [a-zA-Z_][a-zA-Z0-9_]*(\(\))? \{|function [a-zA-Z_][a-zA-Z0-9_]*\(\)|[a-zA-Z_][a-zA-Z0-9_]*\(\))' ~/.zshrc | \
+		sed -E 's/^function ([a-zA-Z_][a-zA-Z0-9_]*).*$/\1/; s/^([a-zA-Z_][a-zA-Z0-9_]*)\(\).*$/\1/')
+
+	aliases=$(grep -E '^alias [a-zA-Z_][a-zA-Z0-9_]*=' ~/.zshrc | \
+		sed -E 's/^alias ([a-zA-Z_][a-zA-Z0-9_]*)=.*/\1/')
+
+	selected=$(printf '%s\n%s' "$funcs" "$aliases" | sort -u | \
+		fzf --preview 'item={}; result=$(awk -v fname="$item" '\''$0 ~ "^function " fname || $0 ~ "^" fname "\\(\\)" {p=1} p {print} /^}$/ && p {exit}'\'' ~/.zshrc); [ -z "$result" ] && result=$(grep -E "^alias $item=" ~/.zshrc); printf "%s" "$result" | bat --color=always --language=bash --style=numbers' \
 		    --preview-window=right:80%:wrap \
 		    --height=80%)
 
-	if [ -n "$func_list" ]; then
-		print -z "$func_list "
+	if [ -n "$selected" ]; then
+		print -z "$selected "
 	fi
 }
 
@@ -1279,12 +1300,6 @@ function odsAuthConnect() {
 }
 
 function dockerDaemonStart() { colima start; }
-
-function deploy() {
-	local ref="$1"
-	local env="$2"
-	gh workflow run deploy-test.yml --ref "$ref" --field env="$env"
-}
 
 function killPort() {
 	lsof -ti :$1 | xargs kill -9
@@ -1614,7 +1629,7 @@ function jbranch() {
 			branch_name="bugfix/NE-${ticket_number}-${slug}"
 			;;
 		*)
-			branch_name="feat/NE-${ticket_number}-${slug}"
+			branch_name="feature/NE-${ticket_number}-${slug}"
 			;;
 	esac
 
@@ -1640,6 +1655,159 @@ function jbranch() {
 	fi
 }
 
+# Generate a conventional commit message from the current branch name
+# Usage: gcmm
+function gcmm() {
+	local branch
+	branch=$(git branch --show-current 2>/dev/null)
+	if [[ -z "$branch" ]]; then
+		echo "❌ Not in a git repository or no branch checked out."
+		return 1
+	fi
+
+	# Determine branch type
+	local branch_type
+	if [[ "$branch" == feature/* ]]; then
+		branch_type="feature"
+	elif [[ "$branch" == bugfix/* ]]; then
+		branch_type="bugfix"
+	elif [[ "$branch" == chore/* ]]; then
+		branch_type="chore"
+	else
+		echo "❌ Branch '$branch' doesn't match feature/*, bugfix/*, or chore/* patterns."
+		return 1
+	fi
+
+	# Strip the type prefix and build description (hyphens → spaces, lowercase)
+	local branch_desc
+	branch_desc=$(echo "$branch" | sed 's|^[^/]*/||' | sed 's|^[A-Za-z]*-[0-9]*-||' | tr '-' ' ' | tr '[:upper:]' '[:lower:]')
+
+	local commit_msg
+	if [[ "$branch_type" == "chore" ]]; then
+		commit_msg="chore: $branch_desc"
+	else
+		# Extract ticket ID from branch (e.g., NE-62584)
+		local ticket_id
+		ticket_id=$(echo "$branch" | grep -oE '[A-Z]+-[0-9]+' | head -1)
+
+		if [[ -z "$ticket_id" ]]; then
+			echo "❌ Could not extract ticket ID from branch: $branch"
+			return 1
+		fi
+
+		echo "🔍 Fetching parent ticket for $ticket_id..."
+		local parent_id
+		parent_id=$(acli jira workitem view "$ticket_id" --fields "parent" --json 2>/dev/null | \
+			python3 -c "import json,sys; d=json.load(sys.stdin); print(d['fields']['parent']['key'])" 2>/dev/null)
+
+		if [[ -z "$parent_id" ]]; then
+			echo "⚠️  Could not fetch parent ticket ID. Using ticket ID itself."
+			parent_id="$ticket_id"
+		fi
+
+
+
+		if [[ "$branch_type" == "feature" ]]; then
+			commit_msg="feat($parent_id): $branch_desc"
+		else
+			commit_msg="fix($parent_id): $branch_desc"
+		fi
+	fi
+
+	# Use fzf to allow editing before committing (ESC cancels)
+	local fzf_out
+	fzf_out=$(echo "$commit_msg" | fzf \
+		--print-query \
+		--query "$commit_msg" \
+		--prompt "✏️  " \
+		--header "Edit commit message and press Enter to commit (ESC to cancel)" \
+		--no-info \
+		--height 5 \
+		2>/dev/null)
+	local fzf_exit=$?
+
+	if [[ $fzf_exit -eq 130 ]]; then
+		echo "❌ Commit cancelled."
+		return 0
+	fi
+
+	local final_msg
+	final_msg=$(echo "$fzf_out" | head -1)
+
+	if [[ -z "$final_msg" ]]; then
+		echo "❌ Commit message is empty. Aborting."
+		return 1
+	fi
+
+	echo ""
+	echo "📝 Committing: $final_msg"
+	git commit -m "$final_msg"
+}
+
+function ghrepo() {
+  local name visibility description account gh_user ssh_host init_local
+
+  echo -n "Account [work/personal] (default: work): "
+  read account
+  account="${account:-work}"
+  if [[ "$account" == "work" ]]; then
+    gh_user="nam-nguyenv-otsv"
+    ssh_host="github.com-work"
+  elif [[ "$account" == "personal" ]]; then
+    gh_user="NolanNamNguyen"
+    ssh_host="github.com-personal"
+  else
+    echo "Must be 'work' or 'personal'."; return 1
+  fi
+
+  echo -n "Repo name: "
+  read name
+  [[ -z "$name" ]] && { echo "Repo name is required."; return 1; }
+
+  echo -n "Visibility [public/private] (default: private): "
+  read visibility
+  visibility="${visibility:-private}"
+  [[ "$visibility" != "public" && "$visibility" != "private" ]] && { echo "Must be 'public' or 'private'."; return 1; }
+
+  echo -n "Description (optional): "
+  read description
+
+  gh auth switch --user "$gh_user" 2>/dev/null
+
+  local args=("$gh_user/$name" "--$visibility")
+  [[ -n "$description" ]] && args+=("--description" "$description")
+
+  gh repo create "${args[@]}" || return 1
+
+  echo -n "Init current directory and set remote origin? [y/N]: "
+  read init_local
+  if [[ "$init_local" =~ ^[Yy]$ ]]; then
+    git init
+    git remote add origin "git@${ssh_host}:${gh_user}/${name}.git"
+    echo "Remote origin set to git@${ssh_host}:${gh_user}/${name}.git"
+  fi
+}
+
+function delRepo() {
+  local selected
+  selected=$(gh repo list --limit 1000 --json nameWithOwner --jq '.[].nameWithOwner' | fzf --prompt="Delete repo > ")
+
+  if [[ -z "$selected" ]]; then
+    echo "No repo selected."
+    return 0
+  fi
+
+  read -r "confirm?Delete '$selected'? This cannot be undone. Type repo name to confirm: "
+
+  if [[ "$confirm" == "$selected" || "$confirm" == "${selected##*/}" ]]; then
+    gh repo delete "$selected" --yes
+    echo "Deleted $selected"
+  else
+    echo "Confirmation mismatch. Aborted."
+    return 1
+  fi
+}
+
 # pnpm
 export PNPM_HOME="/Users/nam.nguyenv/Library/pnpm"
 case ":$PATH:" in
@@ -1647,3 +1815,4 @@ case ":$PATH:" in
   *) export PATH="$PNPM_HOME:$PATH" ;;
 esac
 # pnpm end
+export PATH="$HOME/.local/bin:$PATH"
