@@ -1,0 +1,10 @@
+{
+  "name": "personal-terminal",
+  "version": "1.0.0",
+  "description": "Personal terminal dotfiles and utilities setup for macOS",
+  "scripts": {
+    "install": "chmod +x setup.sh && ./setup.sh"
+  },
+  "author": "",
+  "license": "MIT"
+}

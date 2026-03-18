@@ -7,7 +7,10 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 echo -e "${GREEN}Starting Dotfiles Setup...${NC}"
+echo "Dotfiles directory: $DOTFILES_DIR"
 
 # 1. Install Dependencies
 echo -e "${YELLOW} Checking Homebrew...${NC}"
@@ -19,8 +22,8 @@ else
 fi
 
 echo -e "${YELLOW} Installing dependencies from Brewfile...${NC}"
-if [ -f "$HOME/dotfiles/Brewfile" ]; then
-    brew bundle install --file="$HOME/dotfiles/Brewfile"
+if [ -f "$DOTFILES_DIR/Brewfile" ]; then
+    brew bundle install --file="$DOTFILES_DIR/Brewfile"
 else
     echo -e "${RED}Brewfile not found! Skipping bundle install.${NC}"
 fi
@@ -45,7 +48,24 @@ else
     echo "Oh My Zsh is already installed."
 fi
 
+# Install zsh-autocomplete plugin
+echo -e "${YELLOW} Checking zsh-autocomplete plugin...${NC}"
+ZSH_AUTOCOMPLETE_DIR="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/zsh-autocomplete"
+if [ ! -d "$ZSH_AUTOCOMPLETE_DIR" ]; then
+    echo "Installing zsh-autocomplete..."
+    git clone --depth 1 https://github.com/marlonrichert/zsh-autocomplete.git "$ZSH_AUTOCOMPLETE_DIR"
+else
+    echo "zsh-autocomplete is already installed."
+fi
 
+# Install pnpm
+echo -e "${YELLOW} Checking pnpm...${NC}"
+if ! command -v pnpm &> /dev/null; then
+    echo "Installing pnpm..."
+    curl -fsSL https://get.pnpm.io/install.sh | sh -
+else
+    echo "pnpm is already installed."
+fi
 
 # 2. Fonts
 echo -e "${YELLOW} Installing Cartograph font...${NC}"
@@ -59,8 +79,8 @@ echo "Cartograph fonts installed to ~/Library/Fonts"
 
 # 3. Binaries
 echo -e "${YELLOW} Setting up binaries...${NC}"
-if [ -f "$HOME/dotfiles/bin/alloydb-auth-proxy" ]; then
-    cp "$HOME/dotfiles/bin/alloydb-auth-proxy" "$HOME/alloydb-auth-proxy"
+if [ -f "$DOTFILES_DIR/bin/alloydb-auth-proxy" ]; then
+    cp "$DOTFILES_DIR/bin/alloydb-auth-proxy" "$HOME/alloydb-auth-proxy"
     chmod +x "$HOME/alloydb-auth-proxy"
     echo "alloydb-auth-proxy installed to $HOME/"
 else
@@ -72,7 +92,7 @@ echo -e "${YELLOW} Linking configurations...${NC}"
 
 backup_and_link() {
     local file=$1
-    local source="$HOME/dotfiles/$file"
+    local source="$DOTFILES_DIR/$file"
     local dest="$HOME/$file"
 
     if [ -f "$dest" ] || [ -d "$dest" ]; then
@@ -95,7 +115,7 @@ backup_and_link() {
 # Handle .zshrc specifically
 if [ -f "$HOME/.zshrc" ] && [ ! -L "$HOME/.zshrc" ]; then
     echo "Found existing .zshrc (regular file). Appending source command..."
-    if grep -q "source $HOME/dotfiles/.zshrc" "$HOME/.zshrc"; then
+    if grep -q "source $DOTFILES_DIR/.zshrc" "$HOME/.zshrc"; then
         echo "Dotfiles configuration already sourced. Skipping."
     else
         # Create a backup just in case
@@ -104,7 +124,7 @@ if [ -f "$HOME/.zshrc" ] && [ ! -L "$HOME/.zshrc" ]; then
         
         echo "" >> "$HOME/.zshrc"
         echo "# Load dotfiles configuration" >> "$HOME/.zshrc"
-        echo "source $HOME/dotfiles/.zshrc" >> "$HOME/.zshrc"
+        echo "source $DOTFILES_DIR/.zshrc" >> "$HOME/.zshrc"
         echo "Appended source command to ~/.zshrc"
     fi
 else
@@ -114,9 +134,9 @@ backup_and_link ".hyper.js"
 
 # Link local Hyper plugins
 mkdir -p "$HOME/.hyper_plugins/local"
-if [ -d "$HOME/dotfiles/.hyper_plugins/local/hyper-tab-search" ]; then
+if [ -d "$DOTFILES_DIR/.hyper_plugins/local/hyper-tab-search" ]; then
     rm -rf "$HOME/.hyper_plugins/local/hyper-tab-search"
-    ln -s "$HOME/dotfiles/.hyper_plugins/local/hyper-tab-search" "$HOME/.hyper_plugins/local/hyper-tab-search"
+    ln -s "$DOTFILES_DIR/.hyper_plugins/local/hyper-tab-search" "$HOME/.hyper_plugins/local/hyper-tab-search"
     echo "hyper-tab-search plugin linked."
 fi
 
