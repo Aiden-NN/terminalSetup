@@ -67,6 +67,7 @@ These are the most powerful and frequently useful commands in this setup — gre
 | [`sshCheck`](#git-profile-check-sshcheck) | Git | Print the repo's remote URL, git user config, and test SSH connectivity — useful when switching between work and personal accounts |
 | [`fs`](#file-finder-with-actions-fs) | Shell | Interactive file finder with preview (`fzf` + `bat`) — open, navigate to, or copy path/content of any file |
 | [`gpup`](#git-utilities) | Git | Push the current branch and set upstream tracking in one command — supports custom remote targets |
+| [`pr [target] [reviewers] [label]`](#github--pr-utilities) | GitHub | Create a GitHub PR from the current branch — uses last commit as title, pushes branch, assigns reviewers, and copies PR URL to clipboard |
 
 ---
 
