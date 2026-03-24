@@ -84,6 +84,12 @@ alias fd='open "$(dirname "$(fzf)")"'
 # =============================================================================
 
 # --------------------------
+# File Utilities
+# --------------------------
+
+function copyfile() { cat "$1" | pbcopy && echo "Copied: $1"; }
+
+# --------------------------
 # Git Utilities
 # --------------------------
 
@@ -382,7 +388,7 @@ function pr() {
 
 	current_branch=$(git branch --show-current)
 	default_target_branch="develop"
-	default_reviewers="son-tranhh-otsv,sy-nguyenv-otsv,hoang-trant-otsv,anh-nguyenpn-otsv,khiem-let-otsv"
+	default_reviewers="son-tranhh-otsv,sy-nguyenv-otsv,hoang-trant-otsv,anh-nguyenpn-otsv,khiem-let-otsv,dung-buin-otsv"
 	default_label=""
 
 	if [ -z "$current_branch" ]; then
@@ -416,6 +422,23 @@ function pr() {
 	pr_url=$(echo "$pr_output" | tail -n 1)
 	echo "$pr_url" | pbcopy
 	echo "✓ PR link copied to clipboard!"
+}
+
+function addReviewers() {
+	local default_reviewers="son-tranhh-otsv,sy-nguyenv-otsv,hoang-trant-otsv,anh-nguyenpn-otsv,khiem-let-otsv,dung-buin-otsv"
+	local reviewers=${1:-$default_reviewers}
+
+	local prs=$(gh search prs --author=@me --state=open --json repository,number --jq '.[] | "\(.repository.nameWithOwner) \(.number)"')
+
+	if [[ -z "$prs" ]]; then
+		echo "No open PRs found."
+		return 0
+	fi
+
+	echo "$prs" | while read -r repo pr_number; do
+		echo "Adding reviewers to $repo#$pr_number..."
+		gh pr edit "$pr_number" --repo "$repo" --add-reviewer "$reviewers"
+	done
 }
 
 approve_prs_by_author() {
@@ -1816,3 +1839,6 @@ case ":$PATH:" in
 esac
 # pnpm end
 export PATH="$HOME/.local/bin:$PATH"
+
+# Load dotfiles configuration
+source /Users/nam.nguyenv/Projects/personalTerminal/.zshrc
