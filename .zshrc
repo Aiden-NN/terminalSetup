@@ -66,9 +66,9 @@ alias grs1="git reset --soft HEAD~1"
 alias grl="git reflog"
 alias gbd="git branch -D"
 alias grss="git reset --soft"
-alias gsts="git stash push"
+alias gsts="git stash push --include-untracked"
 alias gsta="git stash apply"
-function gstsn() { git stash save -m "$1"; }
+function gstsn() { git stash save --include-untracked -m "$1"; }
 
 # -- Node / NPM --
 alias dev="npm run dev"
@@ -388,7 +388,7 @@ function pr() {
 
 	current_branch=$(git branch --show-current)
 	default_target_branch="develop"
-	default_reviewers="son-tranhh-otsv,sy-nguyenv-otsv,hoang-trant-otsv,anh-nguyenpn-otsv,khiem-let-otsv,dung-buin-otsv"
+	default_reviewers="son-tranhh-otsv,sy-nguyenv-otsv,hoang-trant-otsv,anh-nguyenpn-otsv,khiem-let-otsv"
 	default_label=""
 
 	if [ -z "$current_branch" ]; then
@@ -1840,5 +1840,28 @@ esac
 # pnpm end
 export PATH="$HOME/.local/bin:$PATH"
 
-# Load dotfiles configuration
-source /Users/nam.nguyenv/Projects/personalTerminal/.zshrc
+# =============================================================================
+# DOCKER HELPERS
+# =============================================================================
+
+shellInto() {
+  local container shell
+
+  if [[ -n "$1" ]]; then
+    container="$1"
+  else
+    container=$(docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | fzf --header="Select container" | awk '{print $1}')
+  fi
+
+  [[ -z "$container" ]] && return 0
+
+  for shell in bash sh ash; do
+    if docker exec "$container" which "$shell" &>/dev/null; then
+      docker exec -it "$container" "$shell"
+      return 0
+    fi
+  done
+
+  echo "No shell found in container '$container'"
+  return 1
+}
