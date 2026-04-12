@@ -55,7 +55,8 @@ if [ -f '/Users/nam.nguyenv/google-cloud-sdk/completion.zsh.inc' ]; then . '/Use
 
 # -- Editors --
 alias code="open -a \"/Users/nam.nguyenv/Apps/VisualStudioCode.app\" ."
-alias shell='agy ~/.zshrc'
+alias shell='code ~/.zshrc'
+alias claudeFolder='agy ~/.claude'
 alias vim="nvim"
 alias copyPath='echo -n $PWD | pbcopy'
 alias clc=claude
@@ -102,6 +103,10 @@ function grbf() {
 	git reset --hard origin/"$1"
 	git checkout -
 	git rebase "$1"
+}
+
+function checkVMSpace() {
+	colima ssh -- df -h / | tail -1
 }
 
 function gbdo() { git push origin --delete "$1"; }
@@ -1273,6 +1278,65 @@ function workflowRun() {
 	fi
 }
 
+function workflowCheck() {
+	if [ ! -d ".github/workflows" ]; then
+		echo "Error: .github/workflows directory not found"
+		return 1
+	fi
+
+	local selected_name
+	if [ -n "$1" ]; then
+		selected_name="$1"
+	else
+		selected_name=$(gh run list --json workflowName --jq '.[].workflowName' | sort -u | \
+			fzf --prompt="Select workflow to check: " --height=60%)
+
+		if [ -z "$selected_name" ]; then
+			echo "No workflow selected"
+			return 0
+		fi
+	fi
+
+	echo "\nFetching last 10 runs for: $selected_name\n"
+
+	local workflow_id
+	workflow_id=$(gh api "repos/{owner}/{repo}/actions/workflows?per_page=100" \
+		--jq ".workflows[] | select(.name == \"$selected_name\") | .id")
+
+	if [ -z "$workflow_id" ]; then
+		echo "Error: Could not find workflow ID for '$selected_name'"
+		return 1
+	fi
+
+	local runs
+	runs=$(gh api "repos/{owner}/{repo}/actions/workflows/$workflow_id/runs?per_page=10" \
+		--jq '.workflow_runs[] | [.head_branch, .created_at, .triggering_actor.login, .status, (.conclusion // "-")] | @tsv')
+
+	if [ -z "$runs" ]; then
+		echo "No runs found for workflow: $selected_name"
+		return 0
+	fi
+
+	printf "%-35s %-30s %-18s %-22s %s\n" "WORKFLOW NAME" "BRANCH" "TIME" "AUTHOR" "STATUS"
+	printf "%-35s %-30s %-18s %-22s %s\n" "$(printf '%0.s-' {1..35})" "$(printf '%0.s-' {1..30})" "$(printf '%0.s-' {1..18})" "$(printf '%0.s-' {1..22})" "--------"
+
+	local wf_name="${selected_name:0:33}"
+
+	while IFS=$'\t' read -r branch created author run_status conclusion; do
+		local formatted_time
+		formatted_time=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$created" "+%m-%d %H:%M" 2>/dev/null || echo "$created")
+
+		local display_status
+		if [ "$run_status" = "completed" ]; then
+			display_status="$conclusion"
+		else
+			display_status="$run_status"
+		fi
+
+		printf "%-35s %-30s %-18s %-22s %s\n" "$wf_name" "${branch:0:28}" "$formatted_time" "${author:0:20}" "$display_status"
+	done <<< "$runs"
+}
+
 # --------------------------
 # Navigation & Search Utilities
 # --------------------------
@@ -1615,7 +1679,7 @@ function jbranch() {
 
 	# Build a list for fzf: "KEY | TYPE | SUMMARY"
 	local ticket_list
-	ticket_list=$(echo "$tickets_json" | jq -r '.[] | "\(.key) | \(.fields.issuetype.name) | \(.fields.summary)"')
+	ticket_list=$(echo "$tickets_json" | jq -r '.[] | select(.fields.issuetype.name != "Story") | "\(.key) | \(.fields.issuetype.name) | \(.fields.summary)"')
 
 	# Let user pick a ticket with fzf
 	local selected
@@ -1663,10 +1727,9 @@ function jbranch() {
 	echo ""
 
 	# Confirm and create the branch
-	read -q "confirm?Create branch '$branch_name'? (y/N): "
-	echo ""
+	read "confirm?Create branch '$branch_name'? [Enter to confirm / any text to cancel]: "
 
-	if [[ "$confirm" == "y" ]]; then
+	if [[ -z "$confirm" ]]; then
 		git checkout -b "$branch_name"
 		if [[ $? -eq 0 ]]; then
 			echo "✅ Branch '$branch_name' created and checked out!"
@@ -1679,8 +1742,13 @@ function jbranch() {
 }
 
 # Generate a conventional commit message from the current branch name
-# Usage: gcmm
+# Usage: gcmm [--no-verify]
 function gcmm() {
+	local no_verify=0
+	for arg in "$@"; do
+		[[ "$arg" == "--no-verify" ]] && no_verify=1
+	done
+
 	local branch
 	branch=$(git branch --show-current 2>/dev/null)
 	if [[ -z "$branch" ]]; then
@@ -1764,10 +1832,14 @@ function gcmm() {
 
 	echo ""
 	echo "📝 Committing: $final_msg"
-	git commit -m "$final_msg"
+	if [[ $no_verify -eq 1 ]]; then
+		git commit -m "$final_msg" --no-verify
+	else
+		git commit -m "$final_msg"
+	fi
 }
 
-function ghrepo() {
+function createRepo() {
   local name visibility description account gh_user ssh_host init_local
 
   echo -n "Account [work/personal] (default: work): "
@@ -1864,4 +1936,124 @@ shellInto() {
 
   echo "No shell found in container '$container'"
   return 1
+}
+
+
+dockerStorage() {
+  echo "=== Docker disk usage ==="
+  docker system df -v 2>/dev/null || { echo "Docker is not running."; return 1; }
+}
+
+mergeBack() {
+  git fetch origin --prune || return 1
+
+  local branches
+  branches=$(git branch -r --format='%(refname:short)' | sed 's|^origin/||' | sort -u)
+
+  local source
+  source=$(echo "$branches" | fzf --header="Select FROM branch (source)")
+  [[ -z "$source" ]] && echo "Cancelled." && return 0
+
+  local target
+  target=$(echo "$branches" | fzf --header="Select TO branch (target)")
+  [[ -z "$target" ]] && echo "Cancelled." && return 0
+
+  local use_fork
+  use_fork=$(printf 'No\nYes\n' | fzf --header="Create forked branch?")
+  [[ -z "$use_fork" ]] && echo "Cancelled." && return 0
+
+  echo "From:   $source"
+  echo "To:     $target"
+  echo "Forked: $use_fork"
+
+  local head_branch="$source"
+
+  if [[ "$use_fork" == "Yes" ]]; then
+    head_branch="merge-back/${source}-to-${target}"
+    if git show-ref --verify --quiet "refs/heads/$head_branch" || git show-ref --verify --quiet "refs/remotes/origin/$head_branch"; then
+      local i=2
+      while git show-ref --verify --quiet "refs/heads/${head_branch}-${i}" || git show-ref --verify --quiet "refs/remotes/origin/${head_branch}-${i}"; do
+        ((i++))
+      done
+      head_branch="${head_branch}-${i}"
+    fi
+    git checkout -b "$head_branch" "origin/$source" || return 1
+    git push -u origin "$head_branch" || return 1
+  fi
+
+  gh pr create \
+    --title "Merge back $source to $target" \
+    --base "$target" \
+    --head "$head_branch" \
+    --body "Merge back \`$source\` to \`$target\`"
+}
+
+# =============================================================================
+# GCLOUD HELPERS
+# =============================================================================
+
+gcProSwitch() {
+  local project
+  project=$(gcloud projects list --format="value(projectId)" 2>/dev/null | fzf --header="Select GCP project")
+  [[ -z "$project" ]] && return 0
+  gcloud config set project "$project" 2>/dev/null
+  gcloud auth application-default set-quota-project "$project" 2>/dev/null
+  echo "Switched to project: $project"
+}
+
+gcBrowse() {
+  local project bucket path input
+
+  project=$(gcloud config list --format="value(core.project)" 2>/dev/null)
+  [[ -z "$project" || "$project" == "(unset)" ]] && echo "No active project. Run gcProSwitch first." && return 1
+
+  bucket=$(gsutil ls 2>/dev/null | sed 's|gs://||;s|/||' | fzf --header="Select bucket (project: $project)")
+  [[ -z "$bucket" ]] && return 0
+
+  path=""
+  while true; do
+    echo "\n📂 gs://$bucket/$path"
+    echo "---"
+
+    local items=()
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && items+=("$line")
+    done < <(gsutil ls "gs://$bucket/$path" 2>/dev/null | sed "s|gs://$bucket/||")
+
+    [[ ${#items[@]} -eq 0 ]] && echo "(empty)" && break
+
+    input=$(printf '%s\n' "${items[@]}" | fzf \
+      --header="Navigate: Enter=open | Ctrl-C=quit | ../ to go back" \
+      --print-query \
+      --expect=ctrl-d \
+      --prompt="gs://$bucket/$path > ")
+
+    local query key selected
+    query=$(echo "$input" | sed -n '1p')
+    key=$(echo "$input" | sed -n '2p')
+    selected=$(echo "$input" | sed -n '3p')
+
+    [[ -z "$selected" && -z "$query" ]] && break
+
+    if [[ "$selected" == "../" || "$query" == ".." ]]; then
+      path=$(echo "$path" | sed 's|[^/]*/$||')
+      continue
+    fi
+
+    if [[ -n "$selected" ]]; then
+      if [[ "$selected" == */ ]]; then
+        path="$selected"
+      else
+        echo "\n📄 gs://$bucket/$selected"
+        echo "[d]ownload | [c]at (view) | [b]ack | [q]uit"
+        read -r "action?Action: "
+        case "$action" in
+          d) gsutil cp "gs://$bucket/$selected" "./${selected##*/}" && echo "Downloaded to ./${selected##*/}" ;;
+          c) gsutil cat "gs://$bucket/$selected" ;;
+          b) ;;
+          q) break ;;
+        esac
+      fi
+    fi
+  done
 }
