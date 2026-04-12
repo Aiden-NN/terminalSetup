@@ -11,6 +11,59 @@ This repository contains my personal configuration files (dotfiles) and a setup 
     ```
 *   **Atlassian Account** (Optional): For Jira CLI features, you'll need an Atlassian account with access to Jira.
 
+## Personalization Required
+
+Several parts of `.zshrc` are hardcoded with the original author's personal details. **Update these before using:**
+
+### Hardcoded Paths
+
+| Line | Path | What to Change |
+|------|------|----------------|
+| 13 | `/Users/nam.nguyenv/.antigravity/antigravity/bin` | Antigravity binary path |
+| 14 | `/Users/nam.nguyenv/Library/Python/3.11/bin` | Python path — match your installed version |
+| 16 | `/Users/nam.nguyenv/.rd/bin` | Rancher Desktop path (auto-managed, verify it matches) |
+| 45–46 | `/Users/nam.nguyenv/google-cloud-sdk/...` | Google Cloud SDK install location |
+| 50 | `/Users/nam.nguyenv/Development/Projects/electron-quick-start/...` | Tabtab completions path for Electron Forge |
+| 57 | `/Users/nam.nguyenv/Apps/VisualStudioCode.app` | VS Code app path used by the `code` alias |
+| 1400 | `~/Downloads/Apps/Cursor.app` | Cursor editor app path |
+| 1404 | `$HOME/Apps/WebStorm.app` | WebStorm app path |
+| 1907 | `/Users/nam.nguyenv/Library/pnpm` | pnpm home directory |
+
+### GitHub Accounts (`createRepo` function)
+
+The `createRepo` function is wired to two specific GitHub accounts. Update the `gh_user` and `ssh_host` variables inside it:
+
+| Account | Current `gh_user` | Current `ssh_host` |
+|---------|------------------|-------------------|
+| work | `nam-nguyenv-otsv` | `github.com-work` |
+| personal | `NolanNamNguyen` | `github.com-personal` |
+
+The SSH host aliases (`github.com-work`, `github.com-personal`) must also be defined in your `~/.ssh/config`.
+
+### Default PR Reviewers
+
+The `pr` and `addReviewers` functions include hardcoded reviewer GitHub usernames. Update `default_reviewers` in both functions to match your team.
+
+### Jira Project Key
+
+Several functions target the `NE` Jira project. If your team uses a different project key, update:
+- `ecom3Sprint`, `ecom3SprintExport`, `ecom3SprintMine`, `ecom3SprintSummary` — search for `project = NE`
+- `jbranch`, `gcmm` — use `NE-` as the ticket prefix pattern
+
+### AlloyDB Proxy (`odsAuthConnect`)
+
+Replace the GCP project, region, cluster, and instance with your own:
+
+```bash
+~/alloydb-auth-proxy projects/<YOUR-GCP-PROJECT>/locations/<REGION>/clusters/<CLUSTER>/instances/<INSTANCE> --port 9999 --auto-iam-authn --public-ip
+```
+
+### Test Alias
+
+The `test` alias runs `npm run test:one-click-booking`, which is specific to the original project. Change it to your project's test script.
+
+---
+
 ## Installation
 
 1.  **Clone the repository**:

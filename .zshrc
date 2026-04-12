@@ -56,6 +56,7 @@ if [ -f '/Users/nam.nguyenv/google-cloud-sdk/completion.zsh.inc' ]; then . '/Use
 # -- Editors --
 alias code="open -a \"/Users/nam.nguyenv/Apps/VisualStudioCode.app\" ."
 alias shell='code ~/.zshrc'
+alias sshconfig='open -a "/Users/nam.nguyenv/Apps/VisualStudioCode.app" ~/.ssh/config'
 alias claudeFolder='agy ~/.claude'
 alias vim="nvim"
 alias copyPath='echo -n $PWD | pbcopy'
@@ -1849,7 +1850,7 @@ function createRepo() {
     gh_user="nam-nguyenv-otsv"
     ssh_host="github.com-work"
   elif [[ "$account" == "personal" ]]; then
-    gh_user="NolanNamNguyen"
+    gh_user="Aiden"
     ssh_host="github.com-personal"
   else
     echo "Must be 'work' or 'personal'."; return 1
