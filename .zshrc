@@ -54,9 +54,9 @@ if [ -f '/Users/nam.nguyenv/google-cloud-sdk/completion.zsh.inc' ]; then . '/Use
 # =============================================================================
 
 # -- Editors --
-alias code="open -a \"/Users/nam.nguyenv/Apps/VisualStudioCode.app\" ."
+alias code="open -a \"/Applications/Visual Studio Code.app\" ."
 alias shell='code ~/.zshrc'
-alias sshconfig='open -a "/Users/nam.nguyenv/Apps/VisualStudioCode.app" ~/.ssh/config'
+alias sshconfig='open -a "/Applications/Visual Studio Code.app" ~/.ssh/config'
 alias claudeFolder='agy ~/.claude'
 alias vim="nvim"
 alias copyPath='echo -n $PWD | pbcopy'
@@ -431,7 +431,7 @@ function pr() {
 }
 
 function addReviewers() {
-	local default_reviewers="son-tranhh-otsv,sy-nguyenv-otsv,hoang-trant-otsv,anh-nguyenpn-otsv,khiem-let-otsv,dung-buin-otsv"
+	local default_reviewers="son-tranhh-otsv,sy-nguyenv-otsv,hoang-trant-otsv,anh-nguyenpn-otsv,khiem-let-otsv"
 	local reviewers=${1:-$default_reviewers}
 
 	local prs=$(gh search prs --author=@me --state=open --json repository,number --jq '.[] | "\(.repository.nameWithOwner) \(.number)"')
@@ -650,66 +650,113 @@ query {
 function reviewNeeded() {
 	gh api graphql -f query='
 query {
-  search(query: "is:pr is:open review-requested:@me sort:updated-asc", type: ISSUE, first: 100) {
+  reviewRequested: search(query: "is:pr is:open review-requested:@me sort:updated-asc", type: ISSUE, first: 100) {
     edges {
       node {
-        ... on PullRequest {
-          number
-          title
-          url
-          headRefName
-          baseRefName
-          author {
-            login
-          }
-          repository {
-            nameWithOwner
-          }
-          reviews(first: 100) {
+        ...PullRequestFields
+      }
+    }
+  }
+  sonPullRequests: search(query: "org:ocean-network-express is:pr is:open author:son-tranhh-otsv sort:updated-asc", type: ISSUE, first: 100) {
+    edges {
+      node {
+        ...PullRequestFields
+      }
+    }
+  }
+  syPullRequests: search(query: "org:ocean-network-express is:pr is:open author:sy-nguyenv-otsv sort:updated-asc", type: ISSUE, first: 100) {
+    edges {
+      node {
+        ...PullRequestFields
+      }
+    }
+  }
+  hoangPullRequests: search(query: "org:ocean-network-express is:pr is:open author:hoang-trant-otsv sort:updated-asc", type: ISSUE, first: 100) {
+    edges {
+      node {
+        ...PullRequestFields
+      }
+    }
+  }
+  anhPullRequests: search(query: "org:ocean-network-express is:pr is:open author:anh-nguyenpn-otsv sort:updated-asc", type: ISSUE, first: 100) {
+    edges {
+      node {
+        ...PullRequestFields
+      }
+    }
+  }
+  khiemPullRequests: search(query: "org:ocean-network-express is:pr is:open author:khiem-let-otsv sort:updated-asc", type: ISSUE, first: 100) {
+    edges {
+      node {
+        ...PullRequestFields
+      }
+    }
+  }
+}
+
+fragment PullRequestFields on PullRequest {
+  number
+  title
+  url
+  updatedAt
+  headRefName
+  baseRefName
+  author {
+    login
+  }
+  repository {
+    nameWithOwner
+  }
+  reviews(first: 50) {
+    totalCount
+    nodes {
+      state
+    }
+  }
+  reviewThreads(first: 50) {
+    totalCount
+    nodes {
+      isResolved
+      comments(first: 1) {
+        totalCount
+      }
+    }
+  }
+  commits(last: 1) {
+    nodes {
+      commit {
+        statusCheckRollup {
+          state
+          contexts(first: 50) {
             totalCount
             nodes {
-              state
-            }
-          }
-          reviewThreads(first: 100) {
-            totalCount
-            nodes {
-              isResolved
-              comments(first: 10) {
-                totalCount
+              ... on StatusContext {
+                state
+                context
+              }
+              ... on CheckRun {
+                status
+                conclusion
+                name
               }
             }
           }
-          commits(last: 1) {
-            nodes {
-              commit {
-                statusCheckRollup {
-                  state
-                  contexts(first: 100) {
-                    totalCount
-                    nodes {
-                      ... on StatusContext {
-                        state
-                        context
-                      }
-                      ... on CheckRun {
-                        status
-                        conclusion
-                        name
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-          mergeStateStatus
         }
       }
     }
   }
-}' | jq -r '
-.data.search.edges[] | 
+  isDraft
+  mergeStateStatus
+}
+' | jq -r '
+([
+  .data.reviewRequested.edges[],
+  .data.sonPullRequests.edges[],
+  .data.syPullRequests.edges[],
+  .data.hoangPullRequests.edges[],
+  .data.anhPullRequests.edges[],
+  .data.khiemPullRequests.edges[]
+] | unique_by(.node.url) | map(select(.node.isDraft == false)) | sort_by(.node.updatedAt))[] | 
 (
   # Calculate CI stats first
   . as $pr |
@@ -1398,7 +1445,7 @@ function killPort() {
 # --------------------------
 
 function cursor() {
-	open -n ~/Downloads/Apps/Cursor.app --args $PWD
+	open -n ~/Apps/Cursor.app --args $PWD
 }
 
 function webstorm() {
@@ -1850,7 +1897,7 @@ function createRepo() {
     gh_user="nam-nguyenv-otsv"
     ssh_host="github.com-work"
   elif [[ "$account" == "personal" ]]; then
-    gh_user="Aiden"
+    gh_user="Aiden-NN"
     ssh_host="github.com-personal"
   else
     echo "Must be 'work' or 'personal'."; return 1
@@ -1941,8 +1988,43 @@ shellInto() {
 
 
 dockerStorage() {
-  echo "=== Docker disk usage ==="
-  docker system df -v 2>/dev/null || { echo "Docker is not running."; return 1; }
+  docker info >/dev/null 2>&1 || { echo "Docker is not running."; return 1; }
+
+  echo "=== Docker summary ==="
+  docker system df 2>/dev/null
+
+  echo ""
+  echo "=== Named volumes (measured via du inside VM) ==="
+  while IFS= read -r vol; do
+    local size
+    size=$(docker run --rm -v "${vol}:/data" alpine sh -c "du -sh /data 2>/dev/null" | cut -f1)
+    printf "  %-45s %s\n" "$vol" "${size:-unknown}"
+  done < <(docker volume ls -q)
+
+  echo ""
+  echo "=== All mounts per running container ==="
+  while IFS= read -r cid; do
+    local name=$(docker inspect --format '{{.Name}}' "$cid" | tr -d '/')
+    local mount_lines=""
+    while IFS='|' read -r mtype msrc mdest mdriver; do
+      [[ -z "$mtype" ]] && continue
+      local size="unknown"
+      if [[ "$mtype" == "volume" ]]; then
+        size=$(docker run --rm -v "${msrc}:/data" alpine sh -c "du -sh /data 2>/dev/null" | cut -f1)
+      elif [[ "$mtype" == "bind" ]]; then
+        size=$(du -sh "$msrc" 2>/dev/null | cut -f1)
+      fi
+      mount_lines+="$(printf "    %-8s %-30s  %s\n" "[$mtype]" "$mdest" "${size:-unknown}")"$'\n'
+    done < <(docker inspect --format '{{range .Mounts}}{{.Type}}|{{.Source}}|{{.Destination}}|{{.Driver}}{{"\n"}}{{end}}' "$cid")
+    if [[ -n "$mount_lines" ]]; then
+      echo "  [$name]"
+      printf "%s" "$mount_lines"
+    fi
+  done < <(docker ps -q)
+
+  echo ""
+  echo "=== Docker VM disk space ==="
+  docker run --rm alpine sh -c "df -h / 2>/dev/null" | awk 'NR==1{print "  "$0} NR==2{printf "  %-20s %6s used, %6s available (%s used)\n", $6, $3, $4, $5}'
 }
 
 mergeBack() {
@@ -2058,3 +2140,27 @@ gcBrowse() {
     fi
   done
 }
+
+ytAudio() {
+  local url="${1}"
+  local fmt="${2:-mp3}"
+
+  if [[ -z "$url" ]]; then
+    echo "Usage: ytAudio <youtube-url> [mp3|m4a]"
+    return 1
+  fi
+
+  if [[ "$fmt" != "mp3" && "$fmt" != "m4a" ]]; then
+    echo "Unsupported format: $fmt. Use mp3 or m4a."
+    return 1
+  fi
+
+  yt-dlp --extract-audio --audio-format "$fmt" -o "%(title)s.%(ext)s" "$url"
+}
+
+# bun completions
+[ -s "/Users/nam.nguyenv/.bun/_bun" ] && source "/Users/nam.nguyenv/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
